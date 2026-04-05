@@ -314,7 +314,90 @@ function StreamEntry({ entry, pipeline, expanded, onToggle }: {
     )
   }
 
-  // エージェント発言（段階的開示: 1行要約 → クリックで全文）
+  // 理(Ri)の検証結果 — 特別表示
+  if (entry.type === 'agent' && entry.hat === 'verify') {
+    const color = hatColor(entry.hat)
+    const ver = pipeline.verification
+    const lines = entry.content.split('\n')
+    const consistencyLine = lines[0] ?? ''
+    const details = lines.slice(1)
+
+    return (
+      <div
+        className="rounded-xl border transition-all cursor-pointer hover:shadow-sm"
+        style={{ borderColor: `${color}33`, borderLeftWidth: '3px', borderLeftColor: color }}
+        onClick={onToggle}
+      >
+        <div className="px-4 py-3">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+            <span className="text-xs font-semibold" style={{ color }}>Ri</span>
+            <span className="text-[10px]" style={{ color: 'var(--text-dim)' }}>Logic</span>
+            {ver && (
+              <span className="text-[10px] ml-auto font-medium" style={{
+                color: ver.overallConsistency >= 80 ? '#22C55E' : ver.overallConsistency >= 60 ? '#F59E0B' : '#EF4444'
+              }}>
+                {consistencyLine}
+              </span>
+            )}
+          </div>
+
+          {/* 矛盾・ファクトギャップを常に表示 */}
+          {details.length > 0 && (
+            <div className="space-y-1.5">
+              {details.map((line, i) => (
+                <p key={i} className="text-sm leading-relaxed" style={{
+                  color: line.startsWith('⚡') ? '#EF4444' : line.startsWith('❓') ? '#F59E0B' : 'var(--text-secondary)'
+                }}>
+                  {line}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {/* 展開時: 詳細 */}
+          {expanded && ver && (
+            <div className="mt-3 pt-3 border-t space-y-2" style={{ borderColor: 'var(--border)' }}>
+              {ver.contradictions.length > 0 && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-ghost)' }}>Contradictions</p>
+                  {ver.contradictions.map((c, i) => (
+                    <div key={i} className="flex items-start gap-2 mb-1">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                        c.severity === 'critical' ? 'bg-red-500/20 text-red-400' :
+                        c.severity === 'moderate' ? 'bg-yellow-500/20 text-yellow-400' :
+                        'bg-gray-500/20 text-gray-400'
+                      }`}>{c.severity}</span>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                        <span style={{ color: hatColor(c.hat1) }}>{AGENTS[c.hat1]?.name}</span>
+                        {' vs '}
+                        <span style={{ color: hatColor(c.hat2) }}>{AGENTS[c.hat2]?.name}</span>
+                        {': '}{c.description}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {ver.factGaps.length > 0 && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-ghost)' }}>Fact Gaps</p>
+                  {ver.factGaps.map((gap, i) => (
+                    <p key={i} className="text-xs pl-2 border-l-2" style={{ borderColor: '#F59E0B', color: 'var(--text-muted)' }}>{gap}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!expanded && details.length > 0 && (
+            <p className="text-[10px] mt-1" style={{ color: 'var(--text-ghost)' }}>Click to see details</p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // 他のエージェント発言（段階的開示: 1行要約 → クリックで全文）
   if (entry.type === 'agent') {
     const color = hatColor(entry.hat)
     const stance = stanceLabel(entry.stance)

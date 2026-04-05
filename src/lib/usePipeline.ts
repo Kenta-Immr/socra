@@ -135,7 +135,11 @@ export function usePipeline() {
                   name: 'Ri',
                   hat: 'verify',
                   stage: 'verify',
-                  content: `Consistency: ${ver.overallConsistency}/100 · ${ver.contradictions.length} contradiction(s)`,
+                  content: [
+                    `論理整合性: ${ver.overallConsistency}/100`,
+                    ...ver.contradictions.map(c => `⚡ ${c.description}`),
+                    ...ver.factGaps.map(g => `❓ ${g}`),
+                  ].join('\n'),
                   timestamp: event.timestamp,
                 })
               } else if (event.stage === 'synthesize') {
