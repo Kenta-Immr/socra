@@ -25,7 +25,20 @@ export async function POST(req: Request) {
       try {
         // ── Stage 0: 問いの構造化 ──────────────────
         send({ type: 'stage:start', stage: 'structure', data: null, timestamp: now() })
-        const structured = await runStructure(question, context)
+        let structured
+        try {
+          structured = await runStructure(question, context)
+        } catch {
+          // 構造化失敗時のフォールバック
+          structured = {
+            original: question,
+            clarified: question,
+            context: context ? [context] : [],
+            stakeholders: ['You'],
+            timeHorizon: 'Unknown',
+            reversibility: 'reversible' as const,
+          }
+        }
         send({ type: 'stage:complete', stage: 'structure', data: structured, timestamp: now() })
 
         // ── 叡のルーティング判断 ─────────────────

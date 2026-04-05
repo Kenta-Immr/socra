@@ -22,7 +22,9 @@ ${userContext ? `\n## User-Provided Context\nThe user answered the following con
 - The "clarified" question should ONLY sharpen what the user actually said, not expand it with assumptions.
 - Context items should be GAPS — things you need to know but don't. Not things you assume.
 - If user provided context, USE it faithfully. Do NOT add information beyond what they stated.
+- If the question is extremely vague (e.g. "help", "どうしよう"), interpret it as "What should I do about my current situation?" and list context gaps.
 - Be concise. Each field should be clear and actionable.
+- You MUST always produce a valid response. Never refuse to structure a question.
 
 Respond in the same language as the user's question.`,
 
