@@ -331,14 +331,21 @@ export default function Home() {
                 } ${entry.type === 'synthesis' ? 'synthesis-glow' : ''}`}
                 style={isAgent ? { '--agent-color': color } as React.CSSProperties : undefined}
               >
-                {entry.type === 'system' ? (
+                {entry.type === 'user' ? (
+                  <div className="flex items-start gap-2">
+                    <span className="text-xs mt-0.5" style={{ color: 'var(--text-dim)' }}>You</span>
+                    <p className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                      {entry.content}
+                    </p>
+                  </div>
+                ) : entry.type === 'system' ? (
                   <div className="flex items-center gap-2">
                     {pipeline.currentStage === entry.stage && pipeline.status === 'running' ? (
                       <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse" />
                     ) : (
                       <span className="w-1.5 h-1.5 rounded-full bg-[#333]" />
                     )}
-                    <span className="text-[11px] text-[#666]">{entry.content}</span>
+                    <span className="text-[11px]" style={{ color: 'var(--text-dim)' }}>{entry.content}</span>
                   </div>
                 ) : (
                   <div>

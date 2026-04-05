@@ -5,7 +5,7 @@ import type { SSEEvent, PipelineStage, AgentResponse, StructuredQuestion, Observ
 
 export type TimelineEntry = {
   id: string
-  type: 'system' | 'agent' | 'synthesis'
+  type: 'system' | 'agent' | 'synthesis' | 'user'
   name?: string
   hat?: string
   stage: PipelineStage
@@ -53,10 +53,18 @@ export function usePipeline() {
   }, [])
 
   const run = useCallback(async (question: string, context?: string) => {
+    const userEntry: TimelineEntry = {
+      id: `user-${Date.now()}`,
+      type: 'user',
+      stage: 'structure',
+      content: question,
+      timestamp: new Date().toISOString(),
+    }
+
     setState({
       status: 'running',
       currentStage: 'structure',
-      timeline: [],
+      timeline: [userEntry],
       structured: null,
       observation: null,
       agents: [],
