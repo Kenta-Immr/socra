@@ -243,13 +243,17 @@ Key: ${a.keyPoints.join(' | ')}`).join('\n\n')}
 - Fact Gaps: ${verification.factGaps.length > 0 ? verification.factGaps.join('; ') : 'None'}
 
 ## Your Task
-Write a synthesis that:
-1. **Opens with the core tension** — what is the real dilemma here?
-2. **Acknowledges what your team agrees on** (this is often overlooked)
-3. **Names the key risk** — the one thing that would make this decision fail
-4. **Names the key opportunity** — the one thing that makes this worth pursuing
-5. **Offers 2-3 concrete next steps** — not "think more" but specific actions
-6. **Closes with a question** — one question that, if answered, would make the decision clear
+Write a synthesis with this EXACT structure:
+
+**Line 1: Your judgment in ONE sentence.** This is the most important line. It should be the core conclusion — clear, direct, and actionable. The user reads this first and may read nothing else.
+
+Then:
+1. **The core tension** — what is the real dilemma here?
+2. **What your team agrees on** (this is often overlooked)
+3. **The key risk** — the one thing that would make this decision fail
+4. **The key opportunity** — the one thing that makes this worth pursuing
+5. **2-3 concrete next steps** — not "think more" but specific actions
+6. **Close with a question** — one question that, if answered, would make the decision clear
 
 ## Rules
 - Speak directly to the decision-maker ("You..." not "The user...")
