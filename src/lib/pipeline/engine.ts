@@ -141,8 +141,8 @@ export async function runVerify(
     model: models.verify,
     schema: z.object({
       contradictions: z.array(z.object({
-        hat1: z.enum(['white', 'red', 'black', 'yellow', 'green', 'blue']),
-        hat2: z.enum(['white', 'red', 'black', 'yellow', 'green', 'blue']),
+        hat1: z.enum(['red', 'black', 'yellow', 'green']),
+        hat2: z.enum(['red', 'black', 'yellow', 'green']),
         description: z.string(),
         severity: z.enum(['critical', 'moderate', 'minor']),
       })),

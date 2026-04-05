@@ -78,6 +78,7 @@ export function usePipeline() {
       const decoder = new TextDecoder()
       let buffer = ''
 
+      try {
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -172,6 +173,9 @@ export function usePipeline() {
               break
           }
         }
+      }
+      } finally {
+        reader.cancel().catch(() => {})
       }
     } catch (err) {
       setState(prev => ({

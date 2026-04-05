@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { usePipeline, type TimelineEntry } from '@/lib/usePipeline'
 import { AGENTS } from '@/types'
 import type { HatColor } from '@/types'
@@ -68,6 +68,7 @@ export default function Home() {
     if (!q || pipeline.status === 'running' || contextPhase === 'asking') return
 
     setOriginalQuestion(q)
+    if (inputRef.current) inputRef.current.value = ''
     setContextPhase('asking')
     setContextAnswers([])
     setCurrentContextQ(0)
@@ -79,6 +80,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: q }),
       })
+      if (!res.ok) throw new Error(`API error: ${res.status}`)
       const data = await res.json()
       const questions = data.questions ?? []
 
@@ -149,7 +151,7 @@ export default function Home() {
     setShowDetail(true)
   }
 
-  function handleMapNodeClick(nodeId: string) {
+  const handleMapNodeClick = useCallback((nodeId: string) => {
     // ノードIDからタイムラインエントリを探す
     const hatMatch = nodeId.match(/^agent-(.+)$/)
     if (hatMatch) {
@@ -177,7 +179,7 @@ export default function Home() {
         setShowDetail(true)
       }
     }
-  }
+  }, [pipeline.timeline, pipeline.structured])
 
   return (
     <main className="flex h-screen" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
@@ -326,7 +328,7 @@ export default function Home() {
       {/* ── 右: D3.jsマップ + 詳細オーバーレイ ──── */}
       <div className="flex-1 relative">
         {/* D3.jsマップ（常に背景に） */}
-        <DecisionMap pipeline={pipeline} onNodeClick={handleMapNodeClick} />
+        <DecisionMap pipeline={pipeline} onNodeClick={handleMapNodeClick} theme={theme} />
 
         {/* 詳細パネル（オーバーレイ） */}
         {showDetail && selectedEntry && (
