@@ -116,8 +116,8 @@ function nodeRadius(node: MapNode): number {
   if (node.type === 'question') return 30
   if (node.type === 'synthesis') return 26
   if (node.type === 'perspective') return 20
-  if (node.type === 'fact') return 8
-  return 7  // サブノード（キーポイント）
+  if (node.type === 'fact') return 10
+  return 8  // サブノード（キーポイント）
 }
 
 function edgeColor(edge: MapEdge, theme: Theme): string {
@@ -133,25 +133,25 @@ function assignInitialPositions(nodes: SimNode[]) {
   const questionNode = nodes.find(n => n.type === 'question')
   if (questionNode) { questionNode.x = 0; questionNode.y = 0 }
 
-  // エージェントノードを質問の周りに円形配置
+  // エージェントノードを質問の周りに円形配置（広めに）
   const agentNodes = nodes.filter(n => n.id.startsWith('agent-'))
   agentNodes.forEach((n, i) => {
     const angle = (i / agentNodes.length) * 2 * Math.PI - Math.PI / 2
-    n.x = Math.cos(angle) * 140
-    n.y = Math.sin(angle) * 140
+    n.x = Math.cos(angle) * 170
+    n.y = Math.sin(angle) * 150
   })
 
-  // 事実ノードを上部に
+  // 事実ノードを上部に（少し大きめの間隔）
   const factNodes = nodes.filter(n => n.id.startsWith('fact-'))
   factNodes.forEach((n, i) => {
-    const spread = (i - (factNodes.length - 1) / 2) * 40
+    const spread = (i - (factNodes.length - 1) / 2) * 50
     n.x = spread
-    n.y = -100
+    n.y = -80
   })
 
-  // 統合ノードを下に
+  // 統合ノードを下に（十分離す）
   const synthNode = nodes.find(n => n.type === 'synthesis')
-  if (synthNode) { synthNode.x = 0; synthNode.y = 160 }
+  if (synthNode) { synthNode.x = 0; synthNode.y = 220 }
 
   // サブノード（キーポイント）を親の近くに
   const subNodes = nodes.filter(n => n.id.startsWith('kp-'))
@@ -432,10 +432,10 @@ export default function DecisionMap({ pipeline, onNodeClick, theme }: Props) {
       .force('radial', d3.forceRadial<SimNode>(
         d => {
           if (d.type === 'question') return 0
-          if (d.type === 'synthesis') return 160
-          if (d.type === 'perspective' && d.radius >= 18) return 130
-          if (d.type === 'fact') return 80
-          return 170  // サブノード
+          if (d.type === 'synthesis') return 200
+          if (d.type === 'perspective' && d.radius >= 18) return 160
+          if (d.type === 'fact') return 70
+          return 200  // サブノード
         },
         0, 0
       ).strength(d => {
