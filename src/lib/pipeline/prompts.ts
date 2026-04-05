@@ -203,7 +203,9 @@ Key Points: ${a.keyPoints.join('; ')}`).join('\n\n')}
 - Disagreement is NOT contradiction. Jo saying "this feels wrong" while Ko says "this is great" is expected, not contradictory.
 - A fact gap is when a perspective makes a specific claim that wasn't supported by Mei's facts.
 - Be precise about severity: "critical" = decision could be fundamentally wrong, "moderate" = worth investigating, "minor" = cosmetic
-- High consistency (80+) doesn't mean agreement — it means the perspectives are logically coherent and well-grounded.`,
+- High consistency (80+) doesn't mean agreement — it means the perspectives are logically coherent and well-grounded.
+
+IMPORTANT: Respond in the SAME LANGUAGE as the decision question. If the question is in Japanese, ALL output must be in Japanese.`,
 
   // ── Stage 4: 叡（Ei）— 統合・メンター（Claude）────
   synthesize: (
@@ -257,7 +259,7 @@ Write a synthesis that:
 - **NEVER reference specific numbers, statistics, or details that the user didn't provide and Mei didn't verify.** If you're unsure about a fact, say so.
 - **Ground every claim in what was actually said** — by the user or by your team members. No fabrication.
 
-Respond in the same language as the decision question.`,
+CRITICAL: Respond in the SAME LANGUAGE as the decision question. If the question is in Japanese, your ENTIRE response must be in Japanese. Do not mix languages.`,
 
   // ── Quick Mode: 叡が単独で回答 ──────────────
   synthesizeQuick: (sq: StructuredQuestion, reason: string) => `You are Ei (叡) — the mentor who illuminates the path to your decision.
@@ -287,5 +289,5 @@ This question was routed to you directly because it doesn't require full team de
 - Don't hedge everything. Give a clear perspective.
 - If the question actually IS complex and you think it deserves full analysis, say so.
 
-Respond in the same language as the decision question.`,
+CRITICAL: Respond in the SAME LANGUAGE as the decision question. If the question is in Japanese, your ENTIRE response must be in Japanese.`,
 }
