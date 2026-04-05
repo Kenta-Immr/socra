@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useMemo, useCallback } from 'react'
+import { useEffect, useRef, useMemo, useCallback, useState } from 'react'
 import * as d3 from 'd3'
 import { AGENTS } from '@/types'
 import type { PipelineUI } from '@/lib/usePipeline'
@@ -18,72 +18,61 @@ function themeColors(theme: Theme) {
   return theme === 'dark' ? {
     nodeBg: '#0a0a0a',
     nodeFillAlpha: '22',
-    labelColor: '#888',
-    edgeDefault: '#2a2a2a',
-    edgeDeepen: '#333',
+    labelColor: '#999',
+    edgeDefault: '#333',
+    edgeDeepen: '#2a2a2a',
+    contradictGlow: 'rgba(239, 68, 68, 0.3)',
   } : {
     nodeBg: '#f8f9fa',
-    nodeFillAlpha: '30',
-    labelColor: '#666',
+    nodeFillAlpha: '25',
+    labelColor: '#555',
     edgeDefault: '#ccc',
-    edgeDeepen: '#bbb',
+    edgeDeepen: '#ddd',
+    contradictGlow: 'rgba(239, 68, 68, 0.2)',
   }
 }
 
-// ── ノードデータ構築 ─────────────────────────────────────
-function buildNodes(pipeline: PipelineUI): { nodes: MapNode[]; edges: MapEdge[] } {
+// ── 主要ノード構築（段階的開示: 初期は主要ノードのみ） ────
+function buildPrimaryNodes(pipeline: PipelineUI): { nodes: MapNode[]; edges: MapEdge[] } {
   const nodes: MapNode[] = []
   const edges: MapEdge[] = []
 
+  // 中心: 質問
   if (pipeline.structured) {
-    nodes.push({
-      id: 'question',
-      label: pipeline.structured.clarified.slice(0, 60),
-      type: 'question',
-    })
+    nodes.push({ id: 'question', label: pipeline.structured.clarified.slice(0, 60), type: 'question' })
   }
 
+  // 明の事実 → 小さいノードで最大3個
   if (pipeline.observation) {
-    pipeline.observation.facts.forEach((fact, i) => {
-      nodes.push({
-        id: `fact-${i}`,
-        label: fact.content.slice(0, 50),
-        type: 'fact',
-        hat: 'white',
-      })
+    pipeline.observation.facts.slice(0, 3).forEach((fact, i) => {
+      nodes.push({ id: `fact-${i}`, label: fact.content.slice(0, 30), type: 'fact', hat: 'white' })
       edges.push({ source: 'question', target: `fact-${i}`, type: 'leads_to' })
     })
   }
 
+  // 4体のエージェント（主要ノードのみ）
   pipeline.agents.forEach(agent => {
     nodes.push({
       id: `agent-${agent.hat}`,
-      label: `${AGENTS[agent.hat].name}: ${agent.keyPoints[0]?.slice(0, 40) ?? agent.reasoning.slice(0, 40)}`,
+      label: agent.keyPoints[0]?.slice(0, 30) ?? agent.reasoning.slice(0, 30),
       type: 'perspective',
       hat: agent.hat,
       stance: agent.stance,
       intensity: agent.intensity,
     })
     edges.push({ source: 'question', target: `agent-${agent.hat}`, type: 'leads_to' })
-
-    agent.keyPoints.slice(0, 3).forEach((kp, i) => {
-      const kpId = `kp-${agent.hat}-${i}`
-      const nodeType = agent.hat === 'black' ? 'risk' as const
-        : agent.hat === 'yellow' ? 'opportunity' as const
-        : 'perspective' as const
-      nodes.push({ id: kpId, label: kp.slice(0, 40), type: nodeType, hat: agent.hat, stance: agent.stance })
-      edges.push({ source: `agent-${agent.hat}`, target: kpId, type: 'deepens' })
-    })
   })
 
+  // 矛盾エッジ
   if (pipeline.verification) {
     pipeline.verification.contradictions.forEach(c => {
       edges.push({ source: `agent-${c.hat1}`, target: `agent-${c.hat2}`, type: 'contradicts' })
     })
   }
 
+  // 統合
   if (pipeline.synthesis) {
-    nodes.push({ id: 'synthesis', label: 'Ei: Synthesis', type: 'synthesis' })
+    nodes.push({ id: 'synthesis', label: 'Synthesis', type: 'synthesis' })
     pipeline.agents.forEach(agent => {
       edges.push({ source: `agent-${agent.hat}`, target: 'synthesis', type: 'leads_to' })
     })
@@ -92,7 +81,30 @@ function buildNodes(pipeline: PipelineUI): { nodes: MapNode[]; edges: MapEdge[] 
   return { nodes, edges }
 }
 
-// ── ノード色 ─────────────────────────────────────────────
+// ── 展開ノード（クリック時に追加） ──────────────────────
+function buildExpandedNodes(pipeline: PipelineUI, expandedAgent: string): { nodes: MapNode[]; edges: MapEdge[] } {
+  const nodes: MapNode[] = []
+  const edges: MapEdge[] = []
+
+  const agent = pipeline.agents.find(a => a.hat === expandedAgent)
+  if (!agent) return { nodes, edges }
+
+  agent.keyPoints.forEach((kp, i) => {
+    const kpId = `kp-${agent.hat}-${i}`
+    nodes.push({
+      id: kpId,
+      label: kp.slice(0, 25),
+      type: agent.hat === 'black' ? 'risk' : agent.hat === 'yellow' ? 'opportunity' : 'perspective',
+      hat: agent.hat as HatColor,
+      stance: agent.stance,
+    })
+    edges.push({ source: `agent-${agent.hat}`, target: kpId, type: 'deepens' })
+  })
+
+  return { nodes, edges }
+}
+
+// ── ノード色・サイズ ─────────────────────────────────────
 function nodeColor(node: MapNode): string {
   if (node.type === 'question') return '#3B82F6'
   if (node.type === 'synthesis') return AGENTS.blue.hex
@@ -101,10 +113,11 @@ function nodeColor(node: MapNode): string {
 }
 
 function nodeRadius(node: MapNode): number {
-  if (node.type === 'question') return 28
-  if (node.type === 'synthesis') return 24
-  if (node.type === 'perspective') return 18
-  return 10
+  if (node.type === 'question') return 30
+  if (node.type === 'synthesis') return 26
+  if (node.type === 'perspective') return 20
+  if (node.type === 'fact') return 8
+  return 7  // サブノード（キーポイント）
 }
 
 function edgeColor(edge: MapEdge, theme: Theme): string {
@@ -113,6 +126,43 @@ function edgeColor(edge: MapEdge, theme: Theme): string {
   if (edge.type === 'supports') return '#22C55E'
   if (edge.type === 'deepens') return tc.edgeDeepen
   return tc.edgeDefault
+}
+
+// ── 円形初期配置 ─────────────────────────────────────────
+function assignInitialPositions(nodes: SimNode[]) {
+  const questionNode = nodes.find(n => n.type === 'question')
+  if (questionNode) { questionNode.x = 0; questionNode.y = 0 }
+
+  // エージェントノードを質問の周りに円形配置
+  const agentNodes = nodes.filter(n => n.id.startsWith('agent-'))
+  agentNodes.forEach((n, i) => {
+    const angle = (i / agentNodes.length) * 2 * Math.PI - Math.PI / 2
+    n.x = Math.cos(angle) * 140
+    n.y = Math.sin(angle) * 140
+  })
+
+  // 事実ノードを上部に
+  const factNodes = nodes.filter(n => n.id.startsWith('fact-'))
+  factNodes.forEach((n, i) => {
+    const spread = (i - (factNodes.length - 1) / 2) * 40
+    n.x = spread
+    n.y = -100
+  })
+
+  // 統合ノードを下に
+  const synthNode = nodes.find(n => n.type === 'synthesis')
+  if (synthNode) { synthNode.x = 0; synthNode.y = 160 }
+
+  // サブノード（キーポイント）を親の近くに
+  const subNodes = nodes.filter(n => n.id.startsWith('kp-'))
+  subNodes.forEach(n => {
+    const parentId = `agent-${n.hat}`
+    const parent = nodes.find(p => p.id === parentId)
+    if (parent) {
+      n.x = (parent.x ?? 0) + (Math.random() - 0.5) * 50
+      n.y = (parent.y ?? 0) + (Math.random() - 0.5) * 50
+    }
+  })
 }
 
 // ── D3シミュレーション型 ─────────────────────────────────
@@ -139,14 +189,37 @@ export default function DecisionMap({ pipeline, onNodeClick, theme }: Props) {
   const prevNodeCount = useRef(0)
   const onNodeClickRef = useRef(onNodeClick)
   onNodeClickRef.current = onNodeClick
+  const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set())
 
-  const { nodes: rawNodes, edges: rawEdges } = useMemo(
-    () => buildNodes(pipeline),
-    [pipeline.structured, pipeline.observation, pipeline.agents, pipeline.verification, pipeline.synthesis]
-  )
+  // 段階的開示: 主要ノード + 展開済みサブノード
+  const { nodes: rawNodes, edges: rawEdges } = useMemo(() => {
+    const primary = buildPrimaryNodes(pipeline)
+    let allNodes = [...primary.nodes]
+    let allEdges = [...primary.edges]
 
-  // onNodeClickをrefで保持し、D3の依存配列から外す
+    expandedAgents.forEach(hat => {
+      const expanded = buildExpandedNodes(pipeline, hat)
+      allNodes = [...allNodes, ...expanded.nodes]
+      allEdges = [...allEdges, ...expanded.edges]
+    })
+
+    return { nodes: allNodes, edges: allEdges }
+  }, [pipeline.structured, pipeline.observation, pipeline.agents, pipeline.verification, pipeline.synthesis, expandedAgents])
+
   const stableNodeClick = useCallback((nodeId: string) => {
+    // エージェントノードダブルクリックでサブノード展開/折りたたみ
+    const hatMatch = nodeId.match(/^agent-(.+)$/)
+    if (hatMatch) {
+      setExpandedAgents(prev => {
+        const next = new Set(prev)
+        if (next.has(hatMatch[1])) {
+          next.delete(hatMatch[1])
+        } else {
+          next.add(hatMatch[1])
+        }
+        return next
+      })
+    }
     onNodeClickRef.current?.(nodeId)
   }, [])
 
@@ -160,49 +233,47 @@ export default function DecisionMap({ pipeline, onNodeClick, theme }: Props) {
     const height = svgEl.clientHeight
     if (width === 0 || height === 0) return
 
-    // ── データ変換 ───────────────────────────────
+    // ── データ変換 + 円形初期配置 ────────────────
     const simNodes: SimNode[] = rawNodes.map(n => ({
       ...n,
       radius: nodeRadius(n),
       color: nodeColor(n),
     }))
+    assignInitialPositions(simNodes)
 
     const nodeMap = new Map(simNodes.map(n => [n.id, n]))
 
     const simEdges: SimEdge[] = rawEdges
       .filter(e => nodeMap.has(e.source as string) && nodeMap.has(e.target as string))
       .map(e => ({
-        source: e.source,
-        target: e.target,
-        type: e.type,
-        color: edgeColor(e, theme),
+        source: e.source, target: e.target,
+        type: e.type, color: edgeColor(e, theme),
       }))
 
-    // ── 初回 or 更新 ────────────────────────────
+    // ── 描画 ────────────────────────────────────
     const isNew = prevNodeCount.current === 0 && simNodes.length > 0
 
     svg.selectAll('*').remove()
     const g = svg.append('g')
 
-    // ズーム
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.3, 3])
       .on('zoom', (event) => { g.attr('transform', event.transform) })
     svg.call(zoom)
 
     if (isNew) {
-      svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(0.9))
+      svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(0.85))
     }
 
     // ── エッジ描画 ──────────────────────────────
     const linkGroup = g.append('g').attr('class', 'links')
-    linkGroup.selectAll('line')
+    const links = linkGroup.selectAll('line')
       .data(simEdges)
       .enter().append('line')
       .attr('stroke', d => d.color)
-      .attr('stroke-width', d => d.type === 'contradicts' ? 2 : 1)
-      .attr('stroke-dasharray', d => d.type === 'contradicts' ? '6,3' : 'none')
-      .attr('opacity', 0.6)
+      .attr('stroke-width', d => d.type === 'contradicts' ? 2.5 : d.type === 'deepens' ? 0.5 : 1)
+      .attr('stroke-dasharray', d => d.type === 'contradicts' ? '8,4' : 'none')
+      .attr('opacity', d => d.type === 'contradicts' ? 0.8 : 0.4)
 
     // ── ノード描画 ──────────────────────────────
     const nodeGroup = g.append('g').attr('class', 'nodes')
@@ -213,23 +284,25 @@ export default function DecisionMap({ pipeline, onNodeClick, theme }: Props) {
       .on('click', (_event, d) => { stableNodeClick(d.id) })
       .call(d3.drag<SVGGElement, SimNode>()
         .on('start', (event, d) => {
-          if (!event.active) simRef.current?.alphaTarget(0.3).restart()
+          if (!event.active) simRef.current?.alphaTarget(0.1).restart()
           d.fx = d.x; d.fy = d.y
         })
         .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y })
         .on('end', (event, d) => {
           if (!event.active) simRef.current?.alphaTarget(0)
-          d.fx = null; d.fy = null
+          // ドラッグ後は位置固定
+          d.fx = d.x; d.fy = d.y
         })
       )
 
-    // 外側グロー円
-    nodeGs.append('circle')
-      .attr('r', d => d.radius + 4)
+    // 外側グロー円（大きいノードのみ）
+    nodeGs.filter(d => d.radius >= 18)
+      .append('circle')
+      .attr('r', d => d.radius + 5)
       .attr('fill', d => d.color)
-      .attr('opacity', 0.15)
+      .attr('opacity', 0.12)
 
-    // メイン円（テーマ対応）
+    // メイン円
     nodeGs.append('circle')
       .attr('r', d => d.radius)
       .attr('fill', d => {
@@ -237,10 +310,15 @@ export default function DecisionMap({ pipeline, onNodeClick, theme }: Props) {
         return `${d.color}${tc.nodeFillAlpha}`
       })
       .attr('stroke', d => d.color)
-      .attr('stroke-width', d => d.type === 'question' || d.type === 'synthesis' ? 2.5 : 1.5)
+      .attr('stroke-width', d => {
+        if (d.type === 'question') return 3
+        if (d.type === 'synthesis') return 2.5
+        if (d.type === 'perspective') return 2
+        return 1
+      })
 
-    // 漢字ラベル（大きいノードのみ）
-    nodeGs.filter(d => d.radius >= 18)
+    // 漢字ラベル（エージェント・質問・統合のみ）
+    nodeGs.filter(d => d.radius >= 20)
       .append('text')
       .text(d => {
         if (d.type === 'question') return '?'
@@ -251,52 +329,110 @@ export default function DecisionMap({ pipeline, onNodeClick, theme }: Props) {
       .attr('text-anchor', 'middle')
       .attr('dy', '0.35em')
       .attr('fill', d => d.color)
-      .attr('font-size', d => d.type === 'question' ? '18px' : '14px')
+      .attr('font-size', d => d.type === 'question' ? '20px' : '16px')
       .attr('font-weight', 'bold')
 
-    // 名前ラベル（テーマ対応）
-    nodeGs.filter(d => d.radius >= 14)
+    // 名前ラベル（大きいノードの下）
+    nodeGs.filter(d => d.radius >= 18)
       .append('text')
       .text(d => {
         if (d.type === 'question') return ''
+        if (d.type === 'synthesis') return 'Ei'
         if (d.hat) return AGENTS[d.hat as HatColor]?.name ?? ''
-        if (d.type === 'synthesis') return 'Synthesis'
         return ''
       })
       .attr('text-anchor', 'middle')
       .attr('dy', d => d.radius + 14)
       .attr('fill', tc.labelColor)
+      .attr('font-size', '11px')
+      .attr('font-weight', '500')
+
+    // スタンスインジケーター（エージェントノード上部）
+    nodeGs.filter(d => d.type === 'perspective' && d.radius >= 18 && d.stance !== undefined)
+      .append('text')
+      .text(d => {
+        if (d.stance === 'support') return '▲'
+        if (d.stance === 'oppose') return '▼'
+        return '◆'
+      })
+      .attr('text-anchor', 'middle')
+      .attr('dy', d => -(d.radius + 6))
+      .attr('fill', d => {
+        if (d.stance === 'support') return '#22C55E'
+        if (d.stance === 'oppose') return '#EF4444'
+        return '#F59E0B'
+      })
       .attr('font-size', '10px')
 
-    // ── 出現アニメーション ──────────────────────
+    // サブノード（キーポイント）のラベル — キーポイント要約を表示
+    nodeGs.filter(d => d.id.startsWith('kp-'))
+      .append('text')
+      .text(d => d.label)
+      .attr('text-anchor', 'start')
+      .attr('dx', d => d.radius + 4)
+      .attr('dy', '0.35em')
+      .attr('fill', tc.labelColor)
+      .attr('font-size', '9px')
+      .attr('opacity', 0.8)
+
+    // ── 出現アニメーション（中心から拡散） ──────
     const newNodeCount = simNodes.length
     if (newNodeCount > prevNodeCount.current) {
       nodeGs.filter((_d, i) => i >= prevNodeCount.current)
         .attr('opacity', 0)
-        .attr('transform', 'scale(0)')
         .transition()
-        .duration(600)
-        .delay((_d, i) => i * 80)
+        .duration(500)
+        .delay((_d, i) => i * 60)
         .attr('opacity', 1)
-        .attr('transform', 'scale(1)')
+
+      // 新しいエッジもフェードイン
+      links.filter((_d, i) => i >= (prevNodeCount.current > 0 ? prevNodeCount.current - 1 : 0))
+        .attr('opacity', 0)
+        .transition()
+        .duration(400)
+        .delay(300)
+        .attr('opacity', d => d.type === 'contradicts' ? 0.8 : 0.4)
     }
     prevNodeCount.current = newNodeCount
 
-    // ── シミュレーション ────────────────────────
+    // ── シミュレーション（高速収束） ──────────
     const sim = d3.forceSimulation<SimNode>(simNodes)
+      .alphaDecay(0.05)  // 高速収束（デフォルト0.0228→0.05）
+      .velocityDecay(0.4)  // 摩擦強め
       .force('link', d3.forceLink<SimNode, SimEdge>(simEdges)
         .id(d => d.id)
-        .distance(d => d.type === 'deepens' ? 60 : 120)
-        .strength(0.5)
+        .distance(d => {
+          if (d.type === 'deepens') return 45
+          if (d.type === 'contradicts') return 180
+          return 100
+        })
+        .strength(d => d.type === 'deepens' ? 0.8 : 0.3)
       )
       .force('charge', d3.forceManyBody()
         .strength(d => {
           const node = d as SimNode
-          return node.type === 'question' ? -400 : node.radius >= 18 ? -200 : -80
+          if (node.type === 'question') return -500
+          if (node.type === 'synthesis') return -300
+          if (node.radius >= 18) return -250
+          return -50
         })
       )
-      .force('center', d3.forceCenter(0, 0).strength(0.05))
-      .force('collision', d3.forceCollide<SimNode>().radius(d => d.radius + 8))
+      .force('center', d3.forceCenter(0, 0).strength(0.1))
+      .force('collision', d3.forceCollide<SimNode>().radius(d => d.radius + 12).strength(0.8))
+      .force('radial', d3.forceRadial<SimNode>(
+        d => {
+          if (d.type === 'question') return 0
+          if (d.type === 'synthesis') return 160
+          if (d.type === 'perspective' && d.radius >= 18) return 130
+          if (d.type === 'fact') return 80
+          return 170  // サブノード
+        },
+        0, 0
+      ).strength(d => {
+        const node = d as SimNode
+        if (node.type === 'question') return 1
+        return 0.3
+      }))
       .on('tick', () => {
         linkGroup.selectAll('line')
           .attr('x1', d => (d as unknown as { source: SimNode }).source.x ?? 0)
@@ -308,13 +444,10 @@ export default function DecisionMap({ pipeline, onNodeClick, theme }: Props) {
 
     simRef.current = sim
 
-    // ── リサイズ対応 ────────────────────────────
+    // リサイズ
     const resizeObserver = new ResizeObserver(() => {
-      const w = svgEl.clientWidth
-      const h = svgEl.clientHeight
-      if (w > 0 && h > 0) {
-        sim.force('center', d3.forceCenter(0, 0).strength(0.05))
-        sim.alpha(0.1).restart()
+      if (svgEl.clientWidth > 0 && svgEl.clientHeight > 0) {
+        sim.alpha(0.05).restart()
       }
     })
     resizeObserver.observe(svgEl)
@@ -390,6 +523,13 @@ export default function DecisionMap({ pipeline, onNodeClick, theme }: Props) {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* 展開ヒント */}
+      {pipeline.status === 'complete' && expandedAgents.size === 0 && pipeline.agents.length > 0 && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full border" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-input)' }}>
+          <span className="text-[10px]" style={{ color: 'var(--text-dim)' }}>Click an agent node to expand key points</span>
         </div>
       )}
     </div>
