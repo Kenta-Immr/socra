@@ -133,10 +133,11 @@ export interface DecisionMapData {
 export interface MapNode {
   id: string
   label: string
-  type: 'question' | 'fact' | 'perspective' | 'risk' | 'opportunity' | 'synthesis'
+  type: 'question' | 'fact' | 'perspective' | 'risk' | 'opportunity' | 'synthesis' | 'user'
   hat?: HatColor
   stance?: Stance
   intensity?: number
+  round?: number  // ラウンド番号（0=初回, 1=フォローアップ1回目...）
   x?: number
   y?: number
 }

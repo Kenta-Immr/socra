@@ -49,6 +49,7 @@ export default function Home() {
   // セッション履歴（フォローアップ用）
   const [sessionContext, setSessionContext] = useState('')
   const [sessionHistory, setSessionHistory] = useState<string[]>([])
+  const [currentRound, setCurrentRound] = useState(0)
 
   // パイプライン完了時にセッションコンテキストを蓄積
   useEffect(() => {
@@ -61,6 +62,7 @@ export default function Home() {
       })
       const newEntry = summaryParts.join('\n')
       setSessionHistory(prev => [...prev, newEntry])
+      setCurrentRound(prev => prev + 1)
     }
   }, [pipeline.status, pipeline.structured, pipeline.synthesis, pipeline.agents])
 
@@ -385,7 +387,7 @@ export default function Home() {
       {/* ── 右: D3.jsマップ + 詳細オーバーレイ ──── */}
       <div className="flex-1 relative">
         {/* D3.jsマップ（常に背景に） */}
-        <DecisionMap pipeline={pipeline} onNodeClick={handleMapNodeClick} theme={theme} />
+        <DecisionMap pipeline={pipeline} onNodeClick={handleMapNodeClick} theme={theme} round={currentRound} />
 
         {/* 詳細パネル（オーバーレイ） */}
         {showDetail && selectedEntry && (
