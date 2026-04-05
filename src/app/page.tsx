@@ -314,6 +314,58 @@ function StreamEntry({ entry, pipeline, expanded, onToggle }: {
     )
   }
 
+  // 明(Mei)の事実 — 特別表示
+  if (entry.type === 'agent' && entry.hat === 'white') {
+    const color = hatColor(entry.hat)
+    const obs = pipeline.observation
+
+    return (
+      <div
+        className="rounded-xl border transition-all cursor-pointer hover:shadow-sm"
+        style={{ borderColor: `${color}33`, borderLeftWidth: '3px', borderLeftColor: color }}
+        onClick={onToggle}
+      >
+        <div className="px-4 py-3">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+            <span className="text-xs font-semibold" style={{ color }}>Mei</span>
+            <span className="text-[10px]" style={{ color: 'var(--text-dim)' }}>Facts</span>
+            {obs && (
+              <span className="text-[10px] ml-auto" style={{ color: 'var(--text-muted)' }}>
+                {obs.facts.length} facts
+              </span>
+            )}
+          </div>
+
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{entry.content}</p>
+
+          {/* 展開時: 事実一覧 */}
+          {expanded && obs && (
+            <div className="mt-3 pt-3 border-t space-y-2" style={{ borderColor: 'var(--border)' }}>
+              {obs.facts.map((fact, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded mt-0.5 flex-shrink-0 ${
+                    fact.confidence === 'high' ? 'bg-green-500/20 text-green-600' :
+                    fact.confidence === 'medium' ? 'bg-yellow-500/20 text-yellow-600' :
+                    'bg-gray-500/20 text-gray-500'
+                  }`}>{fact.confidence}</span>
+                  <div>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{fact.content}</p>
+                    <p className="text-[10px]" style={{ color: 'var(--text-ghost)' }}>{fact.source}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!expanded && (
+            <p className="text-[10px] mt-1" style={{ color: 'var(--text-ghost)' }}>Click to see facts</p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   // 理(Ri)の検証結果 — 特別表示
   if (entry.type === 'agent' && entry.hat === 'verify') {
     const color = hatColor(entry.hat)

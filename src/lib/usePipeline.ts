@@ -61,17 +61,17 @@ export function usePipeline() {
       timestamp: new Date().toISOString(),
     }
 
-    setState({
+    setState(prev => ({
       status: 'running',
       currentStage: 'structure',
-      timeline: [userEntry],
+      timeline: [...prev.timeline, userEntry],
       structured: null,
       observation: null,
       agents: [],
       verification: null,
       synthesis: null,
       error: null,
-    })
+    }))
 
     try {
       const res = await fetch('/api/pipeline', {
