@@ -46,6 +46,24 @@ export default function Home() {
   const [currentContextQ, setCurrentContextQ] = useState(0)
   const [loadingContextQs, setLoadingContextQs] = useState(false)
 
+  // セッション履歴（フォローアップ用）
+  const [sessionContext, setSessionContext] = useState('')
+  const [sessionHistory, setSessionHistory] = useState<string[]>([])
+
+  // パイプライン完了時にセッションコンテキストを蓄積
+  useEffect(() => {
+    if (pipeline.status === 'complete') {
+      const summaryParts: string[] = []
+      if (pipeline.structured) summaryParts.push(`Question: ${pipeline.structured.clarified}`)
+      if (pipeline.synthesis) summaryParts.push(`Ei's answer: ${pipeline.synthesis.recommendation.slice(0, 300)}`)
+      pipeline.agents.forEach(a => {
+        summaryParts.push(`${a.name}(${a.stance}): ${a.reasoning.slice(0, 100)}`)
+      })
+      const newEntry = summaryParts.join('\n')
+      setSessionHistory(prev => [...prev, newEntry])
+    }
+  }, [pipeline.status, pipeline.structured, pipeline.synthesis, pipeline.agents])
+
   useEffect(() => {
     timelineEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [pipeline.timeline.length])
@@ -121,6 +139,7 @@ export default function Home() {
       setSelectedEntry(null)
       setShowDetail(false)
       const contextStr = contextQuestions.map((q, i) => `Q: ${q}\nA: ${newAnswers[i]}`).join('\n\n')
+      setSessionContext(contextStr)
       pipeline.run(originalQuestion, contextStr)
     } else {
       setCurrentContextQ(prev => prev + 1)
@@ -138,9 +157,33 @@ export default function Home() {
     pipeline.run(originalQuestion, contextStr)
   }
 
+  // フォローアップ送信（前回のコンテキストを引き継ぐ）
+  function handleFollowUp(e: React.FormEvent) {
+    e.preventDefault()
+    const q = inputRef.current?.value?.trim()
+    if (!q || pipeline.status === 'running') return
+
+    if (inputRef.current) inputRef.current.value = ''
+    setSelectedEntry(null)
+    setShowDetail(false)
+
+    // 前回の文脈 + セッション履歴をコンテキストとして渡す
+    const prevContext = sessionContext
+    const historyStr = sessionHistory.length > 0
+      ? `\n\n## Previous conversation in this session:\n${sessionHistory.join('\n---\n')}`
+      : ''
+    const fullContext = `${prevContext}${historyStr}`
+
+    setOriginalQuestion(q)
+    pipeline.run(q, fullContext)
+  }
+
   function handleSubmit(e: React.FormEvent) {
     if (contextPhase === 'asking') {
       handleContextAnswer(e)
+    } else if (pipeline.status === 'complete' || pipeline.status === 'error') {
+      // 前回完了後 → フォローアップ
+      handleFollowUp(e)
     } else {
       handleInitialSubmit(e)
     }
@@ -237,7 +280,11 @@ export default function Home() {
           <input
             type="text"
             ref={inputRef}
-            placeholder={contextPhase === 'asking' ? 'Your answer...' : 'What decision are you facing?'}
+            placeholder={
+              contextPhase === 'asking' ? 'Your answer...'
+              : pipeline.status === 'complete' ? 'Ask a follow-up...'
+              : 'What decision are you facing?'
+            }
             disabled={pipeline.status === 'running' || loadingContextQs}
             className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:border-[#3B82F6] transition-colors disabled:opacity-50"
             style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-input)', color: 'var(--text-primary)' }}
@@ -248,7 +295,10 @@ export default function Home() {
               disabled={pipeline.status === 'running' || loadingContextQs}
               className="flex-1 px-3 py-1.5 rounded-lg bg-[#3B82F6] text-white text-xs font-medium hover:bg-[#2563EB] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              {pipeline.status === 'running' ? 'Thinking...' : contextPhase === 'asking' ? 'Answer' : 'Ask your team'}
+              {pipeline.status === 'running' ? 'Thinking...'
+                : contextPhase === 'asking' ? 'Answer'
+                : pipeline.status === 'complete' ? 'Follow up'
+                : 'Ask your team'}
             </button>
             {contextPhase === 'asking' && (
               <button
