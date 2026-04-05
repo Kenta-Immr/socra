@@ -2,44 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --bg-deep: #0f172a;
-  --bg-surface: #1e293b;
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --accent: #3b82f6;
-  --question: #f59e0b;
-  --edge: #475569;
-  --node-bg: #ffffff;
-}
-
 body {
-  color: var(--text-primary);
-  background: var(--bg-deep);
+  color: #e5e5e5;
+  background: #0a0a0a;
   font-family: var(--font-geist-sans), system-ui, sans-serif;
   overflow: hidden;
   height: 100vh;
 }
 
-/* 思考空間のノードアニメーション */
-@keyframes node-appear {
-  from {
-    opacity: 0;
-    transform: scale(0.8);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-.thought-node-enter {
-  animation: node-appear 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
 /* スクロールバー */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 
 ::-webkit-scrollbar-track {
@@ -47,6 +20,14 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--edge);
-  border-radius: 3px;
+  background: #333;
+  border-radius: 2px;
+}
+
+/* line-clamp */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
