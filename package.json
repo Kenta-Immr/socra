@@ -15,6 +15,7 @@
     "@supabase/ssr": "^0.10.0",
     "@supabase/supabase-js": "^2.101.1",
     "ai": "^6.0.146",
+    "d3": "^7.9.0",
     "framer-motion": "^12.38.0",
     "next": "14.2.35",
     "react": "^18",
@@ -22,6 +23,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/d3": "^7.4.3",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",

@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from 'react'
 import { usePipeline, type TimelineEntry } from '@/lib/usePipeline'
 import { AGENTS } from '@/types'
 import type { HatColor } from '@/types'
+import DecisionMap from '@/components/DecisionMap'
+import { useTheme } from '@/hooks/useTheme'
 
 // ── 色ヘルパー ───────────────────────────────────────
 function hatColor(hat?: string): string {
@@ -30,8 +32,19 @@ function stanceColor(stance?: string): string {
 export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null)
   const pipeline = usePipeline()
+  const { theme, toggle: toggleTheme } = useTheme()
   const timelineEndRef = useRef<HTMLDivElement>(null)
   const [selectedEntry, setSelectedEntry] = useState<TimelineEntry | null>(null)
+  const [showDetail, setShowDetail] = useState(false)
+
+  // Stage 0 対話型: 文脈収集フェーズ
+  type ContextPhase = 'idle' | 'asking' | 'done'
+  const [contextPhase, setContextPhase] = useState<ContextPhase>('idle')
+  const [originalQuestion, setOriginalQuestion] = useState('')
+  const [contextQuestions, setContextQuestions] = useState<string[]>([])
+  const [contextAnswers, setContextAnswers] = useState<string[]>([])
+  const [currentContextQ, setCurrentContextQ] = useState(0)
+  const [loadingContextQs, setLoadingContextQs] = useState(false)
 
   useEffect(() => {
     timelineEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -41,114 +54,257 @@ export default function Home() {
   useEffect(() => {
     if (pipeline.status === 'complete' && pipeline.synthesis) {
       const synthEntry = pipeline.timeline.find(e => e.type === 'synthesis')
-      if (synthEntry) setSelectedEntry(synthEntry)
+      if (synthEntry) {
+        setSelectedEntry(synthEntry)
+        setShowDetail(true)
+      }
     }
   }, [pipeline.status, pipeline.synthesis, pipeline.timeline])
 
-  function handleSubmit(e: React.FormEvent) {
+  // 最初の質問を受け取り → 文脈質問を生成
+  async function handleInitialSubmit(e: React.FormEvent) {
     e.preventDefault()
     const q = inputRef.current?.value?.trim()
-    if (!q || pipeline.status === 'running') return
+    if (!q || pipeline.status === 'running' || contextPhase === 'asking') return
+
+    setOriginalQuestion(q)
+    setContextPhase('asking')
+    setContextAnswers([])
+    setCurrentContextQ(0)
+    setLoadingContextQs(true)
+
+    try {
+      const res = await fetch('/api/context-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q }),
+      })
+      const data = await res.json()
+      setContextQuestions(data.questions ?? [])
+    } catch {
+      // フォールバック: 文脈質問なしで直接実行
+      setContextPhase('done')
+      setSelectedEntry(null)
+      setShowDetail(false)
+      pipeline.run(q)
+    } finally {
+      setLoadingContextQs(false)
+    }
+  }
+
+  // 文脈回答を送信
+  function handleContextAnswer(e: React.FormEvent) {
+    e.preventDefault()
+    const answer = inputRef.current?.value?.trim()
+    if (!answer) return
+
+    const newAnswers = [...contextAnswers, answer]
+    setContextAnswers(newAnswers)
+
+    if (inputRef.current) inputRef.current.value = ''
+
+    if (currentContextQ + 1 >= contextQuestions.length) {
+      // 全質問完了 → パイプライン開始
+      setContextPhase('done')
+      setSelectedEntry(null)
+      setShowDetail(false)
+      const contextStr = contextQuestions.map((q, i) => `Q: ${q}\nA: ${newAnswers[i]}`).join('\n\n')
+      pipeline.run(originalQuestion, contextStr)
+    } else {
+      setCurrentContextQ(prev => prev + 1)
+    }
+  }
+
+  // スキップ
+  function handleSkipContext() {
+    setContextPhase('done')
     setSelectedEntry(null)
-    pipeline.run(q)
+    setShowDetail(false)
+    const contextStr = contextAnswers.length > 0
+      ? contextQuestions.slice(0, contextAnswers.length).map((q, i) => `Q: ${q}\nA: ${contextAnswers[i]}`).join('\n\n')
+      : ''
+    pipeline.run(originalQuestion, contextStr)
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    if (contextPhase === 'asking') {
+      handleContextAnswer(e)
+    } else {
+      handleInitialSubmit(e)
+    }
+  }
+
+  function handleTimelineClick(entry: TimelineEntry) {
+    setSelectedEntry(entry)
+    setShowDetail(true)
+  }
+
+  function handleMapNodeClick(nodeId: string) {
+    // ノードIDからタイムラインエントリを探す
+    const hatMatch = nodeId.match(/^agent-(.+)$/)
+    if (hatMatch) {
+      const entry = pipeline.timeline.find(e => e.hat === hatMatch[1] && e.type === 'agent')
+      if (entry) {
+        setSelectedEntry(entry)
+        setShowDetail(true)
+      }
+    } else if (nodeId === 'synthesis') {
+      const entry = pipeline.timeline.find(e => e.type === 'synthesis')
+      if (entry) {
+        setSelectedEntry(entry)
+        setShowDetail(true)
+      }
+    } else if (nodeId.startsWith('fact-')) {
+      const entry = pipeline.timeline.find(e => e.name === 'Mei')
+      if (entry) {
+        setSelectedEntry(entry)
+        setShowDetail(true)
+      }
+    } else if (nodeId === 'question' && pipeline.structured) {
+      const entry = pipeline.timeline.find(e => e.stage === 'structure')
+      if (entry) {
+        setSelectedEntry(entry)
+        setShowDetail(true)
+      }
+    }
   }
 
   return (
-    <main className="flex h-screen bg-[#0a0a0a] text-[#e5e5e5]">
-      {/* ── 左: タイムライン ─────────────────────────── */}
-      <div className="w-[420px] min-w-[420px] border-r border-[#222] flex flex-col">
+    <main className="flex h-screen" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
+      {/* ── 左: タイムライン（狭め） ─────────────── */}
+      <div className="w-[340px] min-w-[340px] border-r flex flex-col" style={{ borderColor: 'var(--border)', background: 'var(--bg-primary)' }}>
         {/* ヘッダー */}
-        <div className="p-5 border-b border-[#222]">
-          <h1 className="text-xl font-semibold tracking-tight">Socra</h1>
-          <p className="text-xs text-[#888] mt-1">Think alone. Decide together.</p>
+        <div className="p-4 border-b" style={{ borderColor: 'var(--border)' }}>
+          <div className="flex items-center justify-between">
+            <h1 className="text-lg font-semibold tracking-tight">Socra</h1>
+            <button
+              onClick={toggleTheme}
+              className="w-7 h-7 rounded-full flex items-center justify-center transition-colors hover:bg-[var(--bg-tertiary)]"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              <span className="text-sm">{theme === 'dark' ? '☀' : '☽'}</span>
+            </button>
+          </div>
+          <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-faint)' }}>Think alone. Decide together.</p>
         </div>
 
         {/* 入力 */}
-        <form onSubmit={handleSubmit} className="p-4 border-b border-[#222]">
-          <input
-            type="text"
-            ref={inputRef}
-            placeholder="What decision are you facing?"
-            disabled={pipeline.status === 'running'}
-            className="w-full px-3 py-2.5 rounded-lg bg-[#141414] border border-[#333] text-sm text-[#e5e5e5] placeholder:text-[#555] focus:outline-none focus:border-[#3B82F6] transition-colors disabled:opacity-50"
-          />
-          <button
-            type="submit"
-            disabled={pipeline.status === 'running'}
-            className="w-full mt-2 px-3 py-2 rounded-lg bg-[#3B82F6] text-white text-sm font-medium hover:bg-[#2563EB] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            {pipeline.status === 'running' ? 'Thinking...' : 'Ask your team'}
-          </button>
-        </form>
-
-        {/* タイムライン */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          {pipeline.timeline.map((entry) => (
-            <button
-              key={entry.id}
-              onClick={() => setSelectedEntry(entry)}
-              className={`w-full text-left p-3 rounded-lg transition-all ${
-                selectedEntry?.id === entry.id
-                  ? 'bg-[#1a1a2e] ring-1 ring-[#3B82F6]/50'
-                  : 'hover:bg-[#141414]'
-              }`}
-            >
-              {entry.type === 'system' ? (
-                <div className="flex items-center gap-2">
-                  {pipeline.currentStage === entry.stage && pipeline.status === 'running' ? (
-                    <span className="w-2 h-2 rounded-full bg-[#3B82F6] animate-pulse" />
-                  ) : (
-                    <span className="w-2 h-2 rounded-full bg-[#333]" />
-                  )}
-                  <span className="text-xs text-[#888]">{entry.content}</span>
-                </div>
-              ) : (
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: hatColor(entry.hat) }}
-                    />
-                    <span className="text-sm font-medium" style={{ color: hatColor(entry.hat) }}>
-                      {entry.name}
-                    </span>
-                    {entry.stance && (
-                      <span className="text-xs ml-auto" style={{ color: stanceColor(entry.stance) }}>
-                        {stanceIcon(entry.stance)} {entry.intensity}/5
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-[#aaa] line-clamp-2 pl-[18px]">
-                    {entry.content.slice(0, 120)}...
-                  </p>
-                </div>
-              )}
-            </button>
-          ))}
-
-          {/* ローディングインジケータ */}
-          {pipeline.status === 'running' && pipeline.currentStage === 'deliberate' && (
-            <div className="flex gap-3 p-3">
-              {(['red', 'black', 'yellow', 'green'] as const).map(hat => {
-                const done = pipeline.agents.some(a => a.hat === hat)
-                const agent = AGENTS[hat]
-                return (
-                  <div key={hat} className="flex items-center gap-1.5">
-                    <span
-                      className={`w-2 h-2 rounded-full ${done ? '' : 'animate-pulse'}`}
-                      style={{ backgroundColor: done ? agent.hex : `${agent.hex}66` }}
-                    />
-                    <span className={`text-xs ${done ? 'text-[#aaa]' : 'text-[#555]'}`}>
-                      {agent.name}
-                    </span>
-                  </div>
-                )
-              })}
+        <form onSubmit={handleSubmit} className="p-3 border-b" style={{ borderColor: 'var(--border)' }}>
+          {/* 文脈質問フェーズ */}
+          {contextPhase === 'asking' && !loadingContextQs && contextQuestions.length > 0 && (
+            <div className="mb-2 p-2.5 rounded-lg" style={{ background: 'var(--bg-tertiary)' }}>
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <span className="w-2 h-2 rounded-full bg-[#3B82F6]" />
+                <span className="text-[10px] font-medium" style={{ color: 'var(--text-dim)' }}>
+                  Ei asks ({currentContextQ + 1}/{contextQuestions.length})
+                </span>
+              </div>
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                {contextQuestions[currentContextQ]}
+              </p>
+            </div>
+          )}
+          {loadingContextQs && (
+            <div className="mb-2 p-2.5 rounded-lg flex items-center gap-2" style={{ background: 'var(--bg-tertiary)' }}>
+              <span className="w-2 h-2 rounded-full bg-[#3B82F6] animate-pulse" />
+              <span className="text-[11px]" style={{ color: 'var(--text-dim)' }}>Ei is preparing questions...</span>
             </div>
           )}
 
+          {/* 回答済みの表示 */}
+          {contextPhase === 'asking' && contextAnswers.length > 0 && (
+            <div className="mb-2 space-y-1">
+              {contextAnswers.map((a, i) => (
+                <div key={i} className="text-[10px] pl-3 border-l-2 border-[#3B82F6]/30" style={{ color: 'var(--text-dim)' }}>
+                  <span className="font-medium">Q{i + 1}:</span> {a}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <input
+            type="text"
+            ref={inputRef}
+            placeholder={contextPhase === 'asking' ? 'Your answer...' : 'What decision are you facing?'}
+            disabled={pipeline.status === 'running' || loadingContextQs}
+            className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:border-[#3B82F6] transition-colors disabled:opacity-50"
+            style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-input)', color: 'var(--text-primary)' }}
+          />
+          <div className="flex gap-2 mt-2">
+            <button
+              type="submit"
+              disabled={pipeline.status === 'running' || loadingContextQs}
+              className="flex-1 px-3 py-1.5 rounded-lg bg-[#3B82F6] text-white text-xs font-medium hover:bg-[#2563EB] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              {pipeline.status === 'running' ? 'Thinking...' : contextPhase === 'asking' ? 'Answer' : 'Ask your team'}
+            </button>
+            {contextPhase === 'asking' && (
+              <button
+                type="button"
+                onClick={handleSkipContext}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors hover:bg-[var(--bg-tertiary)]"
+                style={{ color: 'var(--text-dim)' }}
+              >
+                Skip
+              </button>
+            )}
+          </div>
+        </form>
+
+        {/* タイムライン */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-1">
+          {pipeline.timeline.map((entry) => {
+            const isAgent = entry.type === 'agent' || entry.type === 'synthesis'
+            const color = hatColor(entry.hat)
+            return (
+              <button
+                key={entry.id}
+                onClick={() => handleTimelineClick(entry)}
+                className={`timeline-entry w-full text-left p-2.5 rounded-lg transition-all ${
+                  isAgent ? 'agent-bubble' : ''
+                } ${
+                  selectedEntry?.id === entry.id
+                    ? 'bg-[#141420] ring-1 ring-[#3B82F6]/40'
+                    : 'hover:bg-[#111]'
+                } ${entry.type === 'synthesis' ? 'synthesis-glow' : ''}`}
+                style={isAgent ? { '--agent-color': color } as React.CSSProperties : undefined}
+              >
+                {entry.type === 'system' ? (
+                  <div className="flex items-center gap-2">
+                    {pipeline.currentStage === entry.stage && pipeline.status === 'running' ? (
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse" />
+                    ) : (
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#333]" />
+                    )}
+                    <span className="text-[11px] text-[#666]">{entry.content}</span>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span
+                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: color }}
+                      />
+                      <span className="text-xs font-medium" style={{ color }}>
+                        {entry.name}
+                      </span>
+                      {entry.stance && (
+                        <span className="text-[10px] ml-auto" style={{ color: stanceColor(entry.stance) }}>
+                          {stanceIcon(entry.stance)} {entry.intensity}/5
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-[#777] line-clamp-2 pl-4">
+                      {entry.content.slice(0, 100)}...
+                    </p>
+                  </div>
+                )}
+              </button>
+            )
+          })}
+
           {pipeline.error && (
-            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+            <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
               {pipeline.error}
             </div>
           )}
@@ -157,57 +313,29 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ── 右: 詳細表示 ────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto">
-        {!selectedEntry && pipeline.status === 'idle' && (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center space-y-4 max-w-md">
-              <div className="text-4xl font-bold tracking-tight">Socra</div>
-              <p className="text-[#888] text-sm">
-                Your AI decision-making team.<br />
-                7 perspectives. One clear path.
-              </p>
-              <div className="flex flex-wrap justify-center gap-2 mt-6">
-                {(['white', 'red', 'black', 'yellow', 'green', 'verify', 'blue'] as const).map(key => {
-                  const agent = AGENTS[key]
-                  return (
-                    <div key={key} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#141414]">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: agent.hex }} />
-                      <span className="text-xs text-[#aaa]">{agent.name}</span>
-                      <span className="text-xs text-[#555]">{agent.label}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        )}
+      {/* ── 右: D3.jsマップ + 詳細オーバーレイ ──── */}
+      <div className="flex-1 relative">
+        {/* D3.jsマップ（常に背景に） */}
+        <DecisionMap pipeline={pipeline} onNodeClick={handleMapNodeClick} />
 
-        {!selectedEntry && pipeline.status === 'running' && (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center space-y-3">
-              <div className="w-8 h-8 border-2 border-[#3B82F6] border-t-transparent rounded-full animate-spin mx-auto" />
-              <p className="text-sm text-[#888]">
-                {pipeline.currentStage && STAGE_LABELS_EN[pipeline.currentStage]}
-              </p>
+        {/* 詳細パネル（オーバーレイ） */}
+        {showDetail && selectedEntry && (
+          <div className="absolute inset-y-0 right-0 w-[420px] backdrop-blur-lg border-l overflow-y-auto" style={{ background: 'var(--bg-overlay)', borderColor: 'var(--border-light)' }}>
+            <div className="sticky top-0 z-10 flex justify-between items-center p-3 border-b backdrop-blur" style={{ borderColor: 'var(--border)', background: 'var(--bg-overlay)' }}>
+              <span className="text-xs text-[#555]">Detail</span>
+              <button
+                onClick={() => setShowDetail(false)}
+                className="text-[#555] hover:text-[#aaa] transition-colors text-sm px-2"
+              >
+                ✕
+              </button>
             </div>
+            <DetailView entry={selectedEntry} pipeline={pipeline} />
           </div>
-        )}
-
-        {selectedEntry && (
-          <DetailView entry={selectedEntry} pipeline={pipeline} />
         )}
       </div>
     </main>
   )
-}
-
-const STAGE_LABELS_EN: Record<string, string> = {
-  structure: 'Structuring your question...',
-  observe: 'Mei is gathering facts...',
-  deliberate: 'Your team is deliberating...',
-  verify: 'Ri is checking logic...',
-  synthesize: 'Ei is synthesizing...',
 }
 
 // ── 詳細ビュー ───────────────────────────────────────
@@ -217,32 +345,32 @@ function DetailView({ entry, pipeline }: { entry: TimelineEntry; pipeline: Retur
     if (entry.stage === 'structure' && pipeline.structured) {
       const sq = pipeline.structured
       return (
-        <div className="p-8 max-w-2xl mx-auto space-y-6">
-          <h2 className="text-lg font-semibold">Question Structured</h2>
-          <div className="space-y-4">
+        <div className="p-6 space-y-5">
+          <h2 className="text-sm font-semibold">Question Structured</h2>
+          <div className="space-y-3">
             <div>
-              <label className="text-xs text-[#888] uppercase tracking-wider">Original</label>
-              <p className="text-sm mt-1 text-[#aaa]">{sq.original}</p>
+              <label className="text-[10px] text-[#555] uppercase tracking-wider">Original</label>
+              <p className="text-xs mt-1 text-[#888]">{sq.original}</p>
             </div>
             <div>
-              <label className="text-xs text-[#888] uppercase tracking-wider">Clarified</label>
-              <p className="text-sm mt-1">{sq.clarified}</p>
+              <label className="text-[10px] text-[#555] uppercase tracking-wider">Clarified</label>
+              <p className="text-xs mt-1">{sq.clarified}</p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-[#888] uppercase tracking-wider">Time Horizon</label>
-                <p className="text-sm mt-1">{sq.timeHorizon}</p>
+                <label className="text-[10px] text-[#555] uppercase tracking-wider">Time Horizon</label>
+                <p className="text-xs mt-1">{sq.timeHorizon}</p>
               </div>
               <div>
-                <label className="text-xs text-[#888] uppercase tracking-wider">Reversibility</label>
-                <p className="text-sm mt-1">{sq.reversibility}</p>
+                <label className="text-[10px] text-[#555] uppercase tracking-wider">Reversibility</label>
+                <p className="text-xs mt-1">{sq.reversibility}</p>
               </div>
             </div>
             <div>
-              <label className="text-xs text-[#888] uppercase tracking-wider">Stakeholders</label>
-              <div className="flex flex-wrap gap-1.5 mt-1">
+              <label className="text-[10px] text-[#555] uppercase tracking-wider">Stakeholders</label>
+              <div className="flex flex-wrap gap-1 mt-1">
                 {sq.stakeholders.map((s, i) => (
-                  <span key={i} className="px-2 py-0.5 rounded-full bg-[#1a1a1a] text-xs text-[#aaa]">{s}</span>
+                  <span key={i} className="px-2 py-0.5 rounded-full bg-[#141414] text-[10px] text-[#888]">{s}</span>
                 ))}
               </div>
             </div>
@@ -257,8 +385,8 @@ function DetailView({ entry, pipeline }: { entry: TimelineEntry; pipeline: Retur
     }
 
     return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-sm text-[#555]">{entry.content}</p>
+      <div className="flex items-center justify-center h-64">
+        <p className="text-xs text-[#444]">{entry.content}</p>
       </div>
     )
   }
@@ -272,38 +400,38 @@ function DetailView({ entry, pipeline }: { entry: TimelineEntry; pipeline: Retur
   if (entry.name === 'Ri' && pipeline.verification) {
     const ver = pipeline.verification
     return (
-      <div className="p-8 max-w-2xl mx-auto space-y-6">
-        <div className="flex items-center gap-3">
-          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: AGENTS.verify.hex }} />
-          <h2 className="text-lg font-semibold">Ri — Logic Verification</h2>
+      <div className="p-6 space-y-5">
+        <div className="flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: AGENTS.verify.hex }} />
+          <h2 className="text-sm font-semibold">Ri — Logic Verification</h2>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="text-3xl font-bold">{ver.overallConsistency}</div>
-          <div className="text-sm text-[#888]">/ 100 consistency</div>
+        <div className="flex items-center gap-3">
+          <div className="text-2xl font-bold">{ver.overallConsistency}</div>
+          <div className="text-xs text-[#666]">/ 100 consistency</div>
         </div>
         {ver.contradictions.length > 0 && (
           <div className="space-y-2">
-            <h3 className="text-sm font-medium text-[#aaa]">Contradictions</h3>
+            <h3 className="text-xs font-medium text-[#888]">Contradictions</h3>
             {ver.contradictions.map((c, i) => (
-              <div key={i} className="p-3 rounded-lg bg-[#141414] border border-[#222]">
+              <div key={i} className="p-2.5 rounded-lg bg-[#111] border border-[#1a1a1a]">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-xs px-1.5 py-0.5 rounded ${
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${
                     c.severity === 'critical' ? 'bg-red-500/20 text-red-400' :
                     c.severity === 'moderate' ? 'bg-yellow-500/20 text-yellow-400' :
                     'bg-gray-500/20 text-gray-400'
                   }`}>{c.severity}</span>
-                  <span className="text-xs text-[#888]">{c.hat1} vs {c.hat2}</span>
+                  <span className="text-[10px] text-[#666]">{c.hat1} vs {c.hat2}</span>
                 </div>
-                <p className="text-sm">{c.description}</p>
+                <p className="text-xs">{c.description}</p>
               </div>
             ))}
           </div>
         )}
         {ver.factGaps.length > 0 && (
           <div className="space-y-2">
-            <h3 className="text-sm font-medium text-[#aaa]">Fact Gaps</h3>
+            <h3 className="text-xs font-medium text-[#888]">Fact Gaps</h3>
             {ver.factGaps.map((gap, i) => (
-              <p key={i} className="text-sm text-[#aaa] pl-3 border-l-2 border-[#333]">{gap}</p>
+              <p key={i} className="text-xs text-[#888] pl-2 border-l-2 border-[#222]">{gap}</p>
             ))}
           </div>
         )}
@@ -314,49 +442,44 @@ function DetailView({ entry, pipeline }: { entry: TimelineEntry; pipeline: Retur
   // 叡（Ei）の統合
   if (entry.type === 'synthesis' && pipeline.synthesis) {
     return (
-      <div className="p-8 max-w-2xl mx-auto space-y-6">
-        <div className="flex items-center gap-3">
-          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: AGENTS.blue.hex }} />
-          <h2 className="text-lg font-semibold">Ei — Synthesis</h2>
+      <div className="p-6 space-y-5">
+        <div className="flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: AGENTS.blue.hex }} />
+          <h2 className="text-sm font-semibold">Ei — Synthesis</h2>
         </div>
         <div className="prose prose-invert prose-sm max-w-none">
           {pipeline.synthesis.recommendation.split('\n').map((line, i) => {
-            if (line.startsWith('## ')) return <h2 key={i} className="text-base font-semibold mt-6 mb-2">{line.slice(3)}</h2>
-            if (line.startsWith('**') && line.endsWith('**')) return <p key={i} className="font-semibold text-[#e5e5e5]">{line.slice(2, -2)}</p>
+            if (line.startsWith('## ')) return <h2 key={i} className="text-sm font-semibold mt-4 mb-1">{line.slice(3)}</h2>
+            if (line.startsWith('**') && line.endsWith('**')) return <p key={i} className="font-semibold text-xs text-[#e5e5e5]">{line.slice(2, -2)}</p>
             if (line.trim() === '') return <br key={i} />
-            return <p key={i} className="text-sm text-[#ccc] leading-relaxed mb-2">{line}</p>
+            return <p key={i} className="text-xs text-[#bbb] leading-relaxed mb-1.5">{line}</p>
           })}
         </div>
 
         {/* レーダーチャート的なサマリー */}
-        <div className="p-4 rounded-lg bg-[#141414] border border-[#222]">
-          <div className="text-xs text-[#888] mb-3">Team Pattern: <span className="text-[#e5e5e5] font-medium">{pipeline.synthesis.radarChart.pattern}</span></div>
-          <div className="space-y-2">
+        <div className="p-3 rounded-lg bg-[#111] border border-[#1a1a1a]">
+          <div className="text-[10px] text-[#666] mb-2">
+            Team Pattern: <span className="text-[#e5e5e5] font-medium">{pipeline.synthesis.radarChart.pattern}</span>
+          </div>
+          <div className="space-y-1.5">
             {pipeline.synthesis.radarChart.axes.map(axis => (
-              <div key={axis.hat} className="flex items-center gap-3">
-                <span className="w-12 text-xs text-right" style={{ color: hatColor(axis.hat) }}>{axis.label}</span>
-                <div className="flex-1 h-2 bg-[#1a1a1a] rounded-full overflow-hidden relative">
-                  <div className="absolute inset-y-0 left-1/2 w-px bg-[#333]" />
+              <div key={axis.hat} className="flex items-center gap-2">
+                <span className="w-10 text-[10px] text-right" style={{ color: hatColor(axis.hat) }}>{axis.label}</span>
+                <div className="flex-1 h-1.5 bg-[#0a0a0a] rounded-full overflow-hidden relative">
+                  <div className="absolute inset-y-0 left-1/2 w-px bg-[#222]" />
                   {axis.value > 0 ? (
                     <div
                       className="absolute inset-y-0 left-1/2 rounded-r-full"
-                      style={{
-                        width: `${(axis.value / 5) * 50}%`,
-                        backgroundColor: '#22C55E',
-                      }}
+                      style={{ width: `${(axis.value / 5) * 50}%`, backgroundColor: '#22C55E' }}
                     />
                   ) : axis.value < 0 ? (
                     <div
                       className="absolute inset-y-0 rounded-l-full"
-                      style={{
-                        right: '50%',
-                        width: `${(Math.abs(axis.value) / 5) * 50}%`,
-                        backgroundColor: '#EF4444',
-                      }}
+                      style={{ right: '50%', width: `${(Math.abs(axis.value) / 5) * 50}%`, backgroundColor: '#EF4444' }}
                     />
                   ) : null}
                 </div>
-                <span className="w-8 text-xs text-[#888] text-right">{axis.value > 0 ? '+' : ''}{axis.value}</span>
+                <span className="w-6 text-[10px] text-[#666] text-right">{axis.value > 0 ? '+' : ''}{axis.value}</span>
               </div>
             ))}
           </div>
@@ -368,46 +491,46 @@ function DetailView({ entry, pipeline }: { entry: TimelineEntry; pipeline: Retur
   // 4体のエージェント詳細
   if (entry.type === 'agent' && entry.stance) {
     return (
-      <div className="p-8 max-w-2xl mx-auto space-y-6">
-        <div className="flex items-center gap-3">
-          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: hatColor(entry.hat) }} />
-          <h2 className="text-lg font-semibold" style={{ color: hatColor(entry.hat) }}>
+      <div className="p-6 space-y-5">
+        <div className="flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: hatColor(entry.hat) }} />
+          <h2 className="text-sm font-semibold" style={{ color: hatColor(entry.hat) }}>
             {entry.name}
           </h2>
-          <span className="text-xs text-[#888]">
+          <span className="text-[10px] text-[#666]">
             {AGENTS[entry.hat as HatColor]?.label}
           </span>
         </div>
 
-        <div className="flex items-center gap-4">
-          <span className="text-sm font-medium" style={{ color: stanceColor(entry.stance) }}>
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-medium" style={{ color: stanceColor(entry.stance) }}>
             {stanceIcon(entry.stance)} {entry.stance?.toUpperCase()}
           </span>
-          <div className="flex gap-1">
+          <div className="flex gap-0.5">
             {Array.from({ length: 5 }).map((_, i) => (
               <div
                 key={i}
-                className="w-2 h-6 rounded-sm"
+                className="w-1.5 h-5 rounded-sm"
                 style={{
                   backgroundColor: i < (entry.intensity ?? 0)
                     ? stanceColor(entry.stance)
-                    : '#222',
+                    : '#1a1a1a',
                 }}
               />
             ))}
           </div>
         </div>
 
-        <p className="text-sm leading-relaxed text-[#ccc]">{entry.content}</p>
+        <p className="text-xs leading-relaxed text-[#bbb]">{entry.content}</p>
 
         {/* keyPoints */}
         {pipeline.agents.filter(a => a.hat === entry.hat).map(agent => (
-          <div key={agent.hat} className="space-y-2">
-            <h3 className="text-xs text-[#888] uppercase tracking-wider">Key Points</h3>
+          <div key={agent.hat} className="space-y-1.5">
+            <h3 className="text-[10px] text-[#666] uppercase tracking-wider">Key Points</h3>
             {agent.keyPoints.map((point, i) => (
               <div key={i} className="flex gap-2 items-start">
-                <span className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style={{ backgroundColor: hatColor(entry.hat) }} />
-                <p className="text-sm text-[#aaa]">{point}</p>
+                <span className="w-1 h-1 rounded-full mt-1.5 flex-shrink-0" style={{ backgroundColor: hatColor(entry.hat) }} />
+                <p className="text-xs text-[#888]">{point}</p>
               </div>
             ))}
           </div>
@@ -422,22 +545,22 @@ function DetailView({ entry, pipeline }: { entry: TimelineEntry; pipeline: Retur
 // ── Mei詳細 ──────────────────────────────────────────
 function MeiDetail({ observation }: { observation: NonNullable<ReturnType<typeof usePipeline>['observation']> }) {
   return (
-    <div className="p-8 max-w-2xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: AGENTS.white.hex }} />
-        <h2 className="text-lg font-semibold">Mei — Facts</h2>
+    <div className="p-6 space-y-4">
+      <div className="flex items-center gap-2">
+        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: AGENTS.white.hex }} />
+        <h2 className="text-sm font-semibold">Mei — Facts</h2>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-2">
         {observation.facts.map((fact, i) => (
-          <div key={i} className="p-3 rounded-lg bg-[#141414] border border-[#222]">
-            <p className="text-sm">{fact.content}</p>
-            <div className="flex items-center gap-2 mt-2">
-              <span className={`text-xs px-1.5 py-0.5 rounded ${
+          <div key={i} className="p-2.5 rounded-lg bg-[#111] border border-[#1a1a1a]">
+            <p className="text-xs">{fact.content}</p>
+            <div className="flex items-center gap-2 mt-1.5">
+              <span className={`text-[10px] px-1 py-0.5 rounded ${
                 fact.confidence === 'high' ? 'bg-green-500/20 text-green-400' :
                 fact.confidence === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
                 'bg-gray-500/20 text-gray-400'
               }`}>{fact.confidence}</span>
-              <span className="text-xs text-[#666]">{fact.source}</span>
+              <span className="text-[10px] text-[#555]">{fact.source}</span>
             </div>
           </div>
         ))}

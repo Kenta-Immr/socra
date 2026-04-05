@@ -15,8 +15,55 @@ import type {
   Fact,
 } from '@/types'
 
+// ── ルーティング判断（叡が判断）──────────────────────
+export interface RoutingResult {
+  mode: 'quick' | 'full'
+  reason: string
+}
+
+export async function runRouting(sq: StructuredQuestion): Promise<RoutingResult> {
+  const { object } = await generateObject({
+    model: models.structure,
+    schema: z.object({
+      mode: z.enum(['quick', 'full']).describe('quick = Ei answers alone, full = full team deliberation'),
+      reason: z.string().describe('Why this mode was chosen'),
+    }),
+    prompt: `You are Ei (叡), the mentor of Socra. You must decide how to handle this question.
+
+## The Question
+"${sq.clarified}"
+
+## Context
+- Time Horizon: ${sq.timeHorizon}
+- Reversibility: ${sq.reversibility}
+- Stakeholders: ${sq.stakeholders.join(', ')}
+
+## Decision Criteria
+
+Choose "full" (mobilize the entire team of 7 agents) when:
+- The decision is irreversible or partially reversible
+- Multiple stakeholders are affected
+- The time horizon is long-term (months/years)
+- The question involves significant risk or trade-offs
+- The question is complex with multiple dimensions
+
+Choose "quick" (you answer alone) when:
+- The question is simple, factual, or has a clear answer
+- The decision is easily reversible
+- Low stakes with few stakeholders
+- The question is more of an information request than a decision
+- A quick, focused answer serves the user better than a full deliberation
+
+Be honest: most real decisions deserve "full". Only use "quick" for genuinely simple questions.
+
+Respond briefly.`,
+  })
+
+  return object
+}
+
 // ── Stage 0: 問いの構造化 ─────────────────────────────
-export async function runStructure(question: string): Promise<StructuredQuestion> {
+export async function runStructure(question: string, userContext?: string): Promise<StructuredQuestion> {
   const { object } = await generateObject({
     model: models.structure,
     schema: z.object({
@@ -26,7 +73,7 @@ export async function runStructure(question: string): Promise<StructuredQuestion
       timeHorizon: z.string().describe('判断の時間軸'),
       reversibility: z.enum(['reversible', 'partially', 'irreversible']),
     }),
-    prompt: prompts.structure(question),
+    prompt: prompts.structure(question, userContext),
   })
 
   return { original: question, ...object }
@@ -113,11 +160,16 @@ export async function runSynthesize(
   sq: StructuredQuestion,
   facts: Fact[],
   agents: AgentResponse[],
-  verification: VerificationResult
+  verification: VerificationResult,
+  quickReason?: string
 ): Promise<SynthesisResult> {
+  const prompt = quickReason
+    ? prompts.synthesizeQuick(sq, quickReason)
+    : prompts.synthesize(sq, facts, agents, verification)
+
   const { text } = await generateText({
     model: models.synthesize,
-    prompt: prompts.synthesize(sq, facts, agents, verification),
+    prompt,
   })
 
   return parseSynthesis(text, agents)

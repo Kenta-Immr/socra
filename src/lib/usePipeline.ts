@@ -52,7 +52,7 @@ export function usePipeline() {
     setState(prev => ({ ...prev, timeline: [...prev.timeline, entry] }))
   }, [])
 
-  const run = useCallback(async (question: string) => {
+  const run = useCallback(async (question: string, context?: string) => {
     setState({
       status: 'running',
       currentStage: 'structure',
@@ -69,7 +69,7 @@ export function usePipeline() {
       const res = await fetch('/api/pipeline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, context }),
       })
 
       const reader = res.body?.getReader()
