@@ -80,7 +80,17 @@ export default function Home() {
         body: JSON.stringify({ question: q }),
       })
       const data = await res.json()
-      setContextQuestions(data.questions ?? [])
+      const questions = data.questions ?? []
+
+      if (questions.length === 0 || data.error) {
+        // 質問がない or エラー → 直接パイプライン実行
+        setContextPhase('done')
+        setSelectedEntry(null)
+        setShowDetail(false)
+        pipeline.run(q)
+      } else {
+        setContextQuestions(questions)
+      }
     } catch {
       // フォールバック: 文脈質問なしで直接実行
       setContextPhase('done')
