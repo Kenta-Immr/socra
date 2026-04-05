@@ -19,8 +19,8 @@ function themeColors(theme: Theme) {
     nodeBg: '#0a0a0a',
     nodeFillAlpha: '22',
     labelColor: '#999',
-    edgeDefault: '#333',
-    edgeDeepen: '#2a2a2a',
+    edgeDefault: '#556',
+    edgeDeepen: '#445',
     contradictGlow: 'rgba(239, 68, 68, 0.3)',
   } : {
     nodeBg: '#f8f9fa',
@@ -187,6 +187,7 @@ export default function DecisionMap({ pipeline, onNodeClick, theme }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
   const simRef = useRef<d3.Simulation<SimNode, SimEdge> | null>(null)
   const prevNodeCount = useRef(0)
+  const zoomRef = useRef<d3.ZoomTransform | null>(null)
   const onNodeClickRef = useRef(onNodeClick)
   onNodeClickRef.current = onNodeClick
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set())
@@ -258,11 +259,20 @@ export default function DecisionMap({ pipeline, onNodeClick, theme }: Props) {
 
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.3, 3])
-      .on('zoom', (event) => { g.attr('transform', event.transform) })
+      .on('zoom', (event) => {
+        g.attr('transform', event.transform)
+        zoomRef.current = event.transform
+      })
     svg.call(zoom)
 
-    if (isNew) {
-      svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(0.85))
+    // 前回のzoom状態を復元、なければセンタリング
+    const savedZoom = zoomRef.current
+    if (savedZoom && !isNew) {
+      svg.call(zoom.transform, savedZoom)
+    } else {
+      const initialTransform = d3.zoomIdentity.translate(width / 2, height / 2).scale(0.85)
+      svg.call(zoom.transform, initialTransform)
+      zoomRef.current = initialTransform
     }
 
     // ── エッジ描画 ──────────────────────────────
@@ -273,7 +283,7 @@ export default function DecisionMap({ pipeline, onNodeClick, theme }: Props) {
       .attr('stroke', d => d.color)
       .attr('stroke-width', d => d.type === 'contradicts' ? 2.5 : d.type === 'deepens' ? 0.5 : 1)
       .attr('stroke-dasharray', d => d.type === 'contradicts' ? '8,4' : 'none')
-      .attr('opacity', d => d.type === 'contradicts' ? 0.8 : 0.4)
+      .attr('opacity', d => d.type === 'contradicts' ? 0.9 : 0.6)
 
     // ── ノード描画 ──────────────────────────────
     const nodeGroup = g.append('g').attr('class', 'nodes')
@@ -391,7 +401,7 @@ export default function DecisionMap({ pipeline, onNodeClick, theme }: Props) {
         .transition()
         .duration(400)
         .delay(300)
-        .attr('opacity', d => d.type === 'contradicts' ? 0.8 : 0.4)
+        .attr('opacity', d => d.type === 'contradicts' ? 0.9 : 0.6)
     }
     prevNodeCount.current = newNodeCount
 

@@ -16,12 +16,13 @@ ${userContext ? `\n## User-Provided Context\nThe user answered the following con
 4. Determine the time horizon of this decision
 5. Assess reversibility
 
-## Rules
+## CRITICAL RULES
 - Keep the user's intent intact. Don't change what they're asking.
-- If the question is vague, interpret it as a business/life decision.
-- Context items should be things the user knows but hasn't stated.
+- **NEVER add details the user didn't provide.** If they didn't mention their industry, don't guess it. If they didn't mention a product, don't invent one.
+- The "clarified" question should ONLY sharpen what the user actually said, not expand it with assumptions.
+- Context items should be GAPS — things you need to know but don't. Not things you assume.
+- If user provided context, USE it faithfully. Do NOT add information beyond what they stated.
 - Be concise. Each field should be clear and actionable.
-- If user provided context, USE it to produce a much more precise clarified question.
 
 Respond in the same language as the user's question.`,
 
@@ -37,25 +38,26 @@ Respond in the same language as the user's question.`,
 ## The Decision
 "${sq.clarified}"
 
-## Context
+## Context provided by the user
 ${sq.context.map(c => `- ${c}`).join('\n')}
 
 ## Stakeholders
 ${sq.stakeholders.join(', ')}
 
 ## Your Task
-Gather relevant facts for this decision:
-1. Market data, statistics, benchmarks
-2. Known precedents or case studies
-3. Regulatory or legal considerations
-4. Common outcomes when others faced similar decisions
+Gather relevant GENERAL facts for this type of decision:
+1. General market trends or industry benchmarks (if applicable)
+2. Common patterns when others faced similar decisions
+3. General regulatory or legal considerations
+4. Frameworks or principles relevant to this type of decision
 
-## Rules
-- ONLY facts. No opinions, recommendations, or feelings.
-- Mark confidence level honestly: "high" = verified data, "medium" = reliable secondary source, "low" = anecdotal/estimated
-- If you don't have reliable data, say so. Don't fabricate.
-- Cite sources where possible (even general ones like "U.S. Census Bureau")
-- Aim for 5-8 facts that are genuinely useful for this decision.
+## CRITICAL ANTI-HALLUCINATION RULES
+- **NEVER invent specific numbers** (percentages, growth rates, market sizes) unless you are genuinely confident they are accurate. Use ranges or qualitative descriptions instead.
+- **NEVER assume details the user hasn't stated.** If the user hasn't specified their industry, product, or business model, DO NOT guess. Provide general facts applicable to the decision type.
+- Mark confidence level STRICTLY: "high" = widely known and verifiable, "medium" = generally accepted but hard to verify exactly, "low" = rough estimate or anecdotal
+- If you cannot provide reliable data on a topic, explicitly say "Data not available" rather than making something up.
+- **Prefer general principles over specific statistics.** "Most new ventures fail within 3 years" is better than fabricating "73.2% of startups fail."
+- Aim for 5-8 facts. Quality over quantity — 3 solid facts beat 8 questionable ones.
 
 Respond in the same language as the decision question.`,
 
@@ -162,6 +164,12 @@ ${sq.context.map(c => `- ${c}`).join('\n')}
 
 ${factsBlock}
 
+## ANTI-HALLUCINATION RULES
+- Base your analysis ONLY on the facts provided by Mei and the user's context. Do NOT invent new facts or statistics.
+- If the user hasn't specified their industry, product, or situation details, give GENERAL advice applicable to this type of decision. Do NOT assume specifics.
+- If Mei's facts include numbers, you may reference them. Do NOT create new numbers.
+- It's OK to say "without knowing more about your specific situation..." — honesty beats fabrication.
+
 ## Output Format
 Provide your stance (support/caution/oppose), intensity (1-5), reasoning, and up to 5 key points.
 
@@ -246,6 +254,8 @@ Write a synthesis that:
 - Don't hedge everything. Take a position where the evidence supports one.
 - If the contradictions are critical, say so clearly.
 - End with that one clarifying question.
+- **NEVER reference specific numbers, statistics, or details that the user didn't provide and Mei didn't verify.** If you're unsure about a fact, say so.
+- **Ground every claim in what was actually said** — by the user or by your team members. No fabrication.
 
 Respond in the same language as the decision question.`,
 
