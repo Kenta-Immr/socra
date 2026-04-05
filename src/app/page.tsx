@@ -197,15 +197,16 @@ export default function Home() {
   }
 
   const handleMapNodeClick = useCallback((nodeId: string) => {
-    // ノードIDからタイムラインエントリを探す
-    const hatMatch = nodeId.match(/^agent-(.+)$/)
-    if (hatMatch) {
-      const entry = pipeline.timeline.find(e => e.hat === hatMatch[1] && e.type === 'agent')
+    // ノードID形式: agent-{hat}-r{round}, synthesis-r{round}, fact-r{round}-{i}, user-r{round}, question-r{round}
+    const agentMatch = nodeId.match(/^agent-(\w+)-r\d+$/)
+    if (agentMatch) {
+      const hat = agentMatch[1]
+      const entry = pipeline.timeline.find(e => e.hat === hat && e.type === 'agent')
       if (entry) {
         setSelectedEntry(entry)
         setShowDetail(true)
       }
-    } else if (nodeId === 'synthesis') {
+    } else if (nodeId.startsWith('synthesis-')) {
       const entry = pipeline.timeline.find(e => e.type === 'synthesis')
       if (entry) {
         setSelectedEntry(entry)
@@ -217,7 +218,7 @@ export default function Home() {
         setSelectedEntry(entry)
         setShowDetail(true)
       }
-    } else if (nodeId === 'question' && pipeline.structured) {
+    } else if (nodeId.startsWith('question-') && pipeline.structured) {
       const entry = pipeline.timeline.find(e => e.stage === 'structure')
       if (entry) {
         setSelectedEntry(entry)

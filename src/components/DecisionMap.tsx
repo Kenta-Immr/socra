@@ -147,46 +147,68 @@ function edgeColor(edge: RoundEdge, theme: Theme): string {
 }
 
 // ── 同心円配置 ───────────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function assignConcentricPositions(nodes: SimNode[], _maxRound: number) {
-  const RING_SPACING = 180  // ラウンド間の距離
+// 真の同心円配置: Round 0 = 中心、Round N = 外側のリング
+function assignConcentricPositions(nodes: SimNode[]) {
+  const BASE_RADIUS = 120   // Round 0のエージェント配置半径
+  const RING_SPACING = 200  // ラウンド間の距離
 
   for (const node of nodes) {
     const r = node.roundNum
-    const ringRadius = r * RING_SPACING
+    const ringRadius = BASE_RADIUS + r * RING_SPACING  // 同心円の半径
+
+    // 各ラウンド内のノード一覧
+    const roundNodes = nodes.filter(n => n.roundNum === r)
+    const agentNodes = roundNodes.filter(n => n.id.startsWith('agent-'))
+    const factNodes = roundNodes.filter(n => n.id.startsWith('fact-'))
 
     if (node.type === 'user') {
-      // ユーザーノード: リングの上部
-      node.x = 0
-      node.y = -ringRadius - 40
+      if (r === 0) {
+        // Round 0のユーザー: 中心
+        node.x = 0; node.y = 0
+      } else {
+        // 後続ラウンドのユーザー: リング上部に配置
+        const angle = -Math.PI / 2  // 12時方向
+        node.x = Math.cos(angle) * (ringRadius - 30)
+        node.y = Math.sin(angle) * (ringRadius - 30)
+      }
     } else if (node.type === 'question') {
-      // 質問ノード: リングの中心
-      node.x = 0
-      node.y = -ringRadius
+      if (r === 0) {
+        node.x = 0; node.y = 50  // ユーザーの少し下
+      } else {
+        const angle = -Math.PI / 2
+        node.x = Math.cos(angle) * ringRadius
+        node.y = Math.sin(angle) * ringRadius + 30
+      }
     } else if (node.type === 'synthesis') {
-      // 統合ノード: リングの下部
-      node.x = 0
-      node.y = -ringRadius + RING_SPACING * 0.6
+      // 統合ノード: リングの下側（6時方向）
+      const angle = Math.PI / 2
+      node.x = Math.cos(angle) * (ringRadius - 20)
+      node.y = Math.sin(angle) * (ringRadius - 20)
     } else if (node.id.startsWith('agent-')) {
-      // エージェント: リングの円周上
-      const agentNodes = nodes.filter(n => n.roundNum === r && n.id.startsWith('agent-'))
+      // エージェント: リングの円周上に均等配置
       const idx = agentNodes.indexOf(node)
       const count = agentNodes.length
-      const angle = (idx / count) * 2 * Math.PI - Math.PI / 2
-      const agentRadius = RING_SPACING * 0.45
-      node.x = Math.cos(angle) * agentRadius
-      node.y = -ringRadius + Math.sin(angle) * agentRadius
+      // 右上から時計回りに配置（12時=ユーザー、6時=統合、の間に）
+      const startAngle = -Math.PI / 4  // 1時30分方向から
+      const spreadAngle = Math.PI * 1.5  // 270度の範囲に
+      const angle = startAngle + (idx / (count - 1 || 1)) * spreadAngle
+      node.x = Math.cos(angle) * ringRadius
+      node.y = Math.sin(angle) * ringRadius
     } else if (node.id.startsWith('fact-')) {
-      // 事実ノード: 質問ノードの近く
-      const factNodes = nodes.filter(n => n.roundNum === r && n.id.startsWith('fact-'))
+      // 事実ノード: ユーザーノードと質問ノードの間
       const idx = factNodes.indexOf(node)
-      const spread = (idx - (factNodes.length - 1) / 2) * 35
-      node.x = spread
-      node.y = -ringRadius - 25
+      const spread = (idx - (factNodes.length - 1) / 2) * 30
+      if (r === 0) {
+        node.x = spread; node.y = 25
+      } else {
+        const angle = -Math.PI / 2
+        node.x = Math.cos(angle) * ringRadius + spread
+        node.y = Math.sin(angle) * ringRadius + 15
+      }
     } else {
-      // サブノード: 親の近く
-      node.x = (Math.random() - 0.5) * 60
-      node.y = -ringRadius + (Math.random() - 0.5) * 60
+      // サブノード
+      node.x = (Math.random() - 0.5) * ringRadius * 0.5
+      node.y = (Math.random() - 0.5) * ringRadius * 0.5
     }
   }
 }
@@ -294,7 +316,7 @@ export default function DecisionMap({ pipeline, onNodeClick, theme, round }: Pro
       }
     })
 
-    assignConcentricPositions(simNodes, maxRound)
+    assignConcentricPositions(simNodes)
 
     const nodeMap = new Map(simNodes.map(n => [n.id, n]))
     const simEdges: SimEdge[] = allNodes.edges
@@ -323,9 +345,9 @@ export default function DecisionMap({ pipeline, onNodeClick, theme, round }: Pro
     if (saved && !isFirst) {
       svg.call(zoom.transform, saved)
     } else {
-      const centerY = maxRound > 0 ? -(maxRound * 180) / 2 : 0
-      const scale = maxRound > 1 ? 0.6 : 0.8
-      const t = d3.zoomIdentity.translate(width / 2, height / 2 - centerY * scale).scale(scale)
+      // 中心にズーム。ラウンドが増えるとズームアウト
+      const scale = maxRound > 1 ? 0.5 : maxRound > 0 ? 0.65 : 0.8
+      const t = d3.zoomIdentity.translate(width / 2, height / 2).scale(scale)
       svg.call(zoom.transform, t)
       zoomRef.current = t
     }
@@ -478,11 +500,16 @@ export default function DecisionMap({ pipeline, onNodeClick, theme, round }: Pro
         })
       )
       .force('collision', d3.forceCollide<SimNode>().radius(d => d.radius + 10).strength(0.8))
-      .force('y', d3.forceY<SimNode>(d => {
-        // 同心円レイヤー: ラウンドごとにy位置を固定
-        return -d.roundNum * 180
-      }).strength(0.15))
-      .force('x', d3.forceX(0).strength(0.03))
+      .force('radial', d3.forceRadial<SimNode>(d => {
+        // 同心円: Round 0 = 中心近く、Round N = 外側
+        if (d.type === 'user' && d.roundNum === 0) return 0
+        if (d.type === 'question' && d.roundNum === 0) return 50
+        const baseR = 120 + d.roundNum * 200
+        if (d.type === 'user' || d.type === 'question') return baseR - 30
+        if (d.type === 'synthesis') return baseR - 20
+        if (d.type === 'fact') return baseR - 40
+        return baseR
+      }, 0, 0).strength(0.4))
       .on('tick', () => {
         linkGroup.selectAll('line')
           .attr('x1', d => (d as unknown as { source: SimNode }).source.x ?? 0)
