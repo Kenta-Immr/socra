@@ -112,6 +112,7 @@ export interface SynthesisResult {
   hat: 'blue'
   model: 'claude'
   recommendation: string
+  sessionTitle?: string    // 叡が生成するセッションタイトル（問いの本質）
   riskNodes: RiskNode[]
   nextSteps: string[]
   decisionMap: DecisionMapData

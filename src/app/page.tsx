@@ -59,6 +59,10 @@ export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
 
+  // 決意入力（プロミス）
+  const [commitment, setCommitment] = useState<string | null>(null)
+  const commitInputRef = useRef<HTMLInputElement>(null)
+
   // サイドバー
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -363,6 +367,21 @@ export default function Home() {
               expanded={expandedEntries.has(entry.id)}
               onToggle={() => toggleExpand(entry.id)}
               locale={locale}
+              onAgentFocus={(hat) => {
+                // チャット→マップ連動: エージェント名をクリックするとマップでフォーカス
+                const round = pipeline.round
+                setSelectedNode({
+                  id: `a-${hat}-r${round}`,
+                  label: '',
+                  color: hatColor(hat),
+                  type: 'agent',
+                  hat,
+                  round,
+                  importance: 3,
+                  fullText: pipeline.agents.find(a => a.hat === hat)?.reasoning,
+                })
+                if (window.innerWidth < 768) setMobileTab('map')
+              }}
             />
           ))}
 
@@ -379,6 +398,46 @@ export default function Home() {
                 ) : (
                   <span key={i}>{line}{'\n'}</span>
                 )
+              )}
+            </div>
+          )}
+
+          {/* 決意入力（プロミス） — 叡の統合が完了した後に表示 */}
+          {pipeline.status === 'complete' && !commitment && (
+            <div className="rounded-xl border-2 p-4 mt-2 animate-in fade-in duration-500" style={{ borderColor: `${AGENTS.blue.hex}40`, background: `${AGENTS.blue.hex}05` }}>
+              <p className="text-xs mb-2" style={{ color: AGENTS.blue.hex }}>
+                {locale === 'ja' ? 'あなたは今、何を決めましたか？' : 'What have you decided?'}
+              </p>
+              <form onSubmit={(e) => {
+                e.preventDefault()
+                const val = commitInputRef.current?.value?.trim()
+                if (val) setCommitment(val)
+              }} className="flex gap-2">
+                <input
+                  ref={commitInputRef}
+                  type="text"
+                  placeholder={locale === 'ja' ? '自分の言葉で...' : 'In your own words...'}
+                  className="flex-1 px-3 py-2 rounded-lg border text-sm focus:outline-none focus:border-[#3B82F6]"
+                  style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-input)', color: 'var(--text-primary)' }}
+                />
+                <button type="submit" className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-[#3B82F6] hover:bg-[#2563EB]">
+                  {locale === 'ja' ? '決意する' : 'Commit'}
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* 決意が入力された後 — セッションカード */}
+          {commitment && (
+            <div className="rounded-xl border p-4 mt-2" style={{ borderColor: `${AGENTS.blue.hex}33`, background: 'var(--bg-secondary)' }}>
+              <p className="text-[10px] uppercase tracking-wider mb-2" style={{ color: 'var(--text-ghost)' }}>Your Decision</p>
+              <p className="text-sm font-medium leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+                &ldquo;{commitment}&rdquo;
+              </p>
+              {pipeline.synthesis?.sessionTitle && (
+                <p className="text-[10px] mt-2 italic" style={{ color: 'var(--text-dim)' }}>
+                  {pipeline.synthesis.sessionTitle}
+                </p>
               )}
             </div>
           )}
@@ -502,12 +561,13 @@ export default function Home() {
 }
 
 // ── ストリームエントリー ─────────────────────────────────
-function StreamEntry({ entry, pipeline, expanded, onToggle, locale }: {
+function StreamEntry({ entry, pipeline, expanded, onToggle, locale, onAgentFocus }: {
   entry: TimelineEntry
   pipeline: ReturnType<typeof usePipeline>
   expanded: boolean
   onToggle: () => void
   locale: Locale
+  onAgentFocus?: (hat: string) => void
 }) {
   const msg = t(locale)
   // ユーザーの質問
@@ -704,10 +764,21 @@ function StreamEntry({ entry, pipeline, expanded, onToggle, locale }: {
             {expanded ? entry.content : `${entry.content.slice(0, 100)}...`}
           </p>
 
-          {/* 展開時: キーポイント */}
+          {/* 展開時: キーポイント + マップ連動 */}
           {expanded && fullAgent && (
             <div className="mt-3 pt-3 border-t space-y-1.5" style={{ borderColor: 'var(--border)' }}>
-              <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-ghost)' }}>Key Points</p>
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-ghost)' }}>Key Points</p>
+                {onAgentFocus && entry.hat && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onAgentFocus(entry.hat!) }}
+                    className="text-[10px] px-2 py-0.5 rounded hover:bg-[var(--bg-tertiary)]"
+                    style={{ color }}
+                  >
+                    Show on map →
+                  </button>
+                )}
+              </div>
               {fullAgent.keyPoints.map((kp, i) => (
                 <div key={i} className="flex items-start gap-2">
                   <span className="w-1 h-1 rounded-full mt-1.5 flex-shrink-0" style={{ backgroundColor: color }} />
@@ -787,6 +858,16 @@ function StreamEntry({ entry, pipeline, expanded, onToggle, locale }: {
         )}
 
         {/* マインドマップはモバイルではMapタブで表示 */}
+
+        {/* セッションタイトル（叡が問いの本質を返す） */}
+        {synthesis.sessionTitle && (
+          <div className="mt-4 pt-3 border-t" style={{ borderColor: `${AGENTS.blue.hex}30` }}>
+            <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-ghost)' }}>Your question was really about</p>
+            <p className="text-sm font-medium italic leading-relaxed" style={{ color: AGENTS.blue.hex }}>
+              &ldquo;{synthesis.sessionTitle}&rdquo;
+            </p>
+          </div>
+        )}
 
         {/* 次の一歩の問いかけ */}
         <div className="mt-4 pt-3 border-t text-center" style={{ borderColor: `${AGENTS.blue.hex}30` }}>

@@ -234,10 +234,20 @@ function parseSynthesis(text: string, agents: AgentResponse[]): SynthesisResult 
     ? nextStepsMatch[1].split('\n').map(l => l.replace(/^[-•*]\s*/, '').trim()).filter(Boolean)
     : []
 
+  // セッションタイトル抽出（"Your question was really about: ..." / "あなたの問いの本質は: ..."）
+  const titleMatch = text.match(/(?:Your question was really about|あなたの問いの本質は)[:\s]*(.+)/i)
+  const sessionTitle = titleMatch ? titleMatch[1].replace(/^["「]|["」]$/g, '').trim() : undefined
+
+  // タイトル行をrecommendation本文から除去（UIで別表示するため）
+  const cleanedText = titleMatch
+    ? text.replace(/\n*(?:Your question was really about|あなたの問いの本質は)[:\s]*.+/i, '').trim()
+    : text
+
   return {
     hat: 'blue',
     model: 'claude',
-    recommendation: text,
+    recommendation: cleanedText,
+    sessionTitle,
     riskNodes,
     nextSteps,
     decisionMap: {
