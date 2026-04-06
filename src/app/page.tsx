@@ -42,6 +42,7 @@ export default function Home() {
   const [contextAnswers, setContextAnswers] = useState<string[]>([])
   const [currentContextQ, setCurrentContextQ] = useState(0)
   const [loadingContextQs, setLoadingContextQs] = useState(false)
+  const [userName, setUserName] = useState<string | null>(null)
 
   // セッション
   const [sessionContext, setSessionContext] = useState('')
@@ -182,11 +183,16 @@ export default function Home() {
     const newAnswers = [...contextAnswers, answer]
     setContextAnswers(newAnswers)
     if (inputRef.current) inputRef.current.value = ''
+    // 最初の回答（名前の質問への回答）をuserNameとして保存
+    if (currentContextQ === 0 && !userName) {
+      setUserName(answer)
+    }
     if (currentContextQ + 1 >= contextQuestions.length) {
       setContextPhase('done')
       const contextStr = contextQuestions.map((q, i) => `Q: ${q}\nA: ${newAnswers[i]}`).join('\n\n')
       setSessionContext(contextStr)
-      pipeline.run(originalQuestion, contextStr)
+      const name = userName ?? newAnswers[0]
+      pipeline.run(originalQuestion, contextStr, name)
     } else {
       setCurrentContextQ(prev => prev + 1)
     }

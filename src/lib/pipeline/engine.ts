@@ -64,7 +64,7 @@ Respond briefly.`,
 }
 
 // ── Stage 0: 問いの構造化 ─────────────────────────────
-export async function runStructure(question: string, userContext?: string): Promise<StructuredQuestion> {
+export async function runStructure(question: string, userContext?: string, userName?: string): Promise<StructuredQuestion> {
   const { object } = await generateObject({
     model: models.structure,
     schema: z.object({
@@ -74,7 +74,7 @@ export async function runStructure(question: string, userContext?: string): Prom
       timeHorizon: z.string().describe('判断の時間軸'),
       reversibility: z.enum(['reversible', 'partially', 'irreversible']),
     }),
-    prompt: prompts.structure(question, userContext),
+    prompt: prompts.structure(question, userContext, userName),
   })
 
   return { original: question, ...object }
@@ -194,11 +194,12 @@ export async function runSynthesize(
   facts: Fact[],
   agents: AgentResponse[],
   verification: VerificationResult,
-  quickReason?: string
+  quickReason?: string,
+  userName?: string
 ): Promise<SynthesisResult> {
   const prompt = quickReason
-    ? prompts.synthesizeQuick(sq, quickReason)
-    : prompts.synthesize(sq, facts, agents, verification)
+    ? prompts.synthesizeQuick(sq, quickReason, userName)
+    : prompts.synthesize(sq, facts, agents, verification, userName)
 
   const { text } = await generateText({
     model: models.synthesize,
@@ -227,12 +228,18 @@ function parseSynthesis(text: string, agents: AgentResponse[]): SynthesisResult 
   const supportCount = agents.filter(a => a.stance === 'support').length
   const pattern = supportCount >= 3 ? 'Expansive' : supportCount <= 1 ? 'Defensive' : 'Balanced'
 
+  // nextStepsをテキストから抽出（Next Steps / 次のステップ セクション内の箇条書き）
+  const nextStepsMatch = text.match(/(?:Next Steps|次のステップ|next steps)[:\s]*\n((?:[-•*]\s*.+\n?)+)/i)
+  const nextSteps = nextStepsMatch
+    ? nextStepsMatch[1].split('\n').map(l => l.replace(/^[-•*]\s*/, '').trim()).filter(Boolean)
+    : []
+
   return {
     hat: 'blue',
     model: 'claude',
     recommendation: text,
     riskNodes,
-    nextSteps: [],
+    nextSteps,
     decisionMap: {
       nodes: agents.map(a => ({
         id: `agent-${a.hat}`,

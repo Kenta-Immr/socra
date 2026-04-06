@@ -7,7 +7,7 @@ import type { SSEEvent } from '@/types'
 export const maxDuration = 300  // Vercel Pro: 最大300秒。Web検索込みで余裕を持つ
 
 export async function POST(req: Request) {
-  const { question, context, locale } = await req.json()
+  const { question, context, locale, userName } = await req.json()
 
   if (!question || typeof question !== 'string') {
     return new Response(JSON.stringify({ error: 'question is required' }), {
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
         send({ type: 'stage:start', stage: 'structure', data: null, timestamp: now() })
         let structured
         try {
-          structured = await runStructure(question, context)
+          structured = await runStructure(question, context, userName)
         } catch {
           // 構造化失敗時のフォールバック
           structured = {
@@ -61,7 +61,8 @@ export async function POST(req: Request) {
             [],  // 事実収集なし
             [],  // 議論なし
             { hat: 'blue', model: 'openai', contradictions: [], factGaps: [], overallConsistency: 100 },
-            routing.reason
+            routing.reason,
+            userName
           )
           send({ type: 'stage:complete', stage: 'synthesize', data: quickSynthesis, timestamp: now() })
 
@@ -99,7 +100,7 @@ export async function POST(req: Request) {
 
           // ── Stage 4: 青/統合 ────────────────────────
           send({ type: 'stage:start', stage: 'synthesize', data: null, timestamp: now() })
-          const synthesis = await runSynthesize(structured, observation.facts, deliberation.agents, verification)
+          const synthesis = await runSynthesize(structured, observation.facts, deliberation.agents, verification, undefined, userName)
           send({ type: 'stage:complete', stage: 'synthesize', data: synthesis, timestamp: now() })
 
           // ── 完了 ────────────────────────────────────

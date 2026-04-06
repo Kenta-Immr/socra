@@ -29,21 +29,21 @@ A user has asked: "${question}"
 Before your team analyzes this, you need to understand the context better. Generate up to 3 short, focused questions that will help your team give better advice.
 
 ## Priority order for questions (ask the MOST important first):
-1. **What is your specific situation?** — Industry, role, company size, what you actually do. Without this, the team will guess and get it wrong.
-2. **What constraints exist?** — Budget, timeline, resources, commitments
+1. **What should I call you?** — Ask HOW they'd like to be called, not just their name. Frame it naturally: "Before we dive in, what should I call you?" or "なんとお呼びすればいいですか？（ニックネームでもOKです）". This lets the user choose their preferred form (first name, nickname, Mr./Ms. + surname, etc.)
+2. **What is your specific situation?** — Industry, role, company size, what you actually do. Without this, the team will guess and get it wrong.
 3. **What matters most to you?** — The one thing that would make this decision a success or failure
 
 ## Rules
+- The FIRST question must ALWAYS ask for their name/nickname. This is non-negotiable.
 - Each question should reveal critical context that PREVENTS the team from guessing wrong
-- The #1 priority is understanding WHO the user is and WHAT their situation is. Never skip this.
 - Be warm but concise. You're a mentor, not an interrogator.
-- If the question is already very specific and clear, generate fewer questions (even 1 is fine)
+- If the question is already very specific and clear, generate fewer questions (even 2 is fine) — but always ask the name.
 - Questions should be in the same language as the user's question
 - Each question should be 1 sentence, direct and easy to answer
 
 Example good questions:
+- "なんとお呼びすればいいですか？（ニックネームでもOKです）"
 - "あなたの事業や立場を教えていただけますか？"
-- "使える予算や期間の目安はありますか？"
 - "この判断で最も重視していることは何ですか？"`,
     })
 

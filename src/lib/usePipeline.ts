@@ -67,7 +67,7 @@ export function usePipeline() {
     setState(prev => ({ ...prev, timeline: [...prev.timeline, entry] }))
   }, [])
 
-  const run = useCallback(async (question: string, context?: string) => {
+  const run = useCallback(async (question: string, context?: string, userName?: string) => {
     const currentRound = roundRef.current
     roundRef.current += 1
 
@@ -110,7 +110,7 @@ export function usePipeline() {
       const res = await fetch('/api/pipeline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, context }),
+        body: JSON.stringify({ question, context, userName }),
       })
 
       // セーフティフィルター: 危機的状況検出時はJSONレスポンスが返る
