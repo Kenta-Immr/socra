@@ -7,7 +7,7 @@ import type { SSEEvent } from '@/types'
 export const maxDuration = 300  // Vercel Pro: 最大300秒。Web検索込みで余裕を持つ
 
 export async function POST(req: Request) {
-  const { question, context, locale, userName } = await req.json()
+  const { question, context, locale, userName, round = 0 } = await req.json()
 
   if (!question || typeof question !== 'string') {
     return new Response(JSON.stringify({ error: 'question is required' }), {
@@ -100,7 +100,7 @@ export async function POST(req: Request) {
 
           // ── Stage 4: 青/統合 ────────────────────────
           send({ type: 'stage:start', stage: 'synthesize', data: null, timestamp: now() })
-          const synthesis = await runSynthesize(structured, observation.facts, deliberation.agents, verification, undefined, userName)
+          const synthesis = await runSynthesize(structured, observation.facts, deliberation.agents, verification, undefined, userName, round)
           send({ type: 'stage:complete', stage: 'synthesize', data: synthesis, timestamp: now() })
 
           // ── 完了 ────────────────────────────────────

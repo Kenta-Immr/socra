@@ -195,11 +195,12 @@ export async function runSynthesize(
   agents: AgentResponse[],
   verification: VerificationResult,
   quickReason?: string,
-  userName?: string
+  userName?: string,
+  round: number = 0
 ): Promise<SynthesisResult> {
   const prompt = quickReason
     ? prompts.synthesizeQuick(sq, quickReason, userName)
-    : prompts.synthesize(sq, facts, agents, verification, userName)
+    : prompts.synthesize(sq, facts, agents, verification, userName, round)
 
   const { text } = await generateText({
     model: models.synthesize,

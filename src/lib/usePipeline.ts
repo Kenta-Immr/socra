@@ -110,7 +110,7 @@ export function usePipeline() {
       const res = await fetch('/api/pipeline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, context, userName }),
+        body: JSON.stringify({ question, context, userName, round: currentRound }),
       })
 
       // セーフティフィルター: 危機的状況検出時はJSONレスポンスが返る
