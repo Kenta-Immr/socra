@@ -144,18 +144,40 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
       const info = AGENTS[a.hat]
       agentMap[a.hat] = { stance: a.stance, intensity: a.intensity, name: info?.name ?? a.hat, kanji: info?.kanji ?? '' }
     }
+    // 明(white) — 事実収集者。observationがあれば存在
+    if (pipeline.observation && !agentMap['white']) {
+      const info = AGENTS['white']
+      const factCount = pipeline.observation.facts?.length ?? 0
+      agentMap['white'] = { stance: 'support', intensity: Math.min(factCount, 5), name: info?.name ?? 'Mei', kanji: info?.kanji ?? '明' }
+    }
+    // 理(verify) — 検証者。stanceはneutral、intensityは矛盾数ベース
+    if (pipeline.verification && !agentMap['verify']) {
+      const info = AGENTS['verify']
+      const contradictions = pipeline.verification.contradictions?.length ?? 0
+      agentMap['verify'] = { stance: 'neutral', intensity: Math.min(contradictions + 1, 5), name: info?.name ?? 'Ri', kanji: info?.kanji ?? '理' }
+    }
+    // 叡(blue) — 統合者。synthesisがあれば存在
+    if (pipeline.synthesis && !agentMap['blue']) {
+      const info = AGENTS['blue']
+      agentMap['blue'] = { stance: 'support', intensity: 5, name: info?.name ?? 'Ei', kanji: info?.kanji ?? '叡' }
+    }
 
-    // Standard hat order (excluding verify and blue/ei which is center)
-    const hatOrder: HatColor[] = ['white', 'red', 'black', 'yellow', 'green']
+    // 7体全員を周囲に配置（中央は「問い」の核）
+    const hatOrder: (HatColor | 'verify')[] = ['white', 'red', 'black', 'yellow', 'green', 'verify', 'blue']
     const geos: AgentGeo[] = []
 
     hatOrder.forEach((hat, idx) => {
       const data = agentMap[hat]
       if (!data) return
-      const angle = (idx / hatOrder.length) * Math.PI * 2 - Math.PI / 2
-      const r = orbit
+      const n = hatOrder.length
+      const angle = (idx / n) * Math.PI * 2 - Math.PI / 2
+      // 叡(blue)はやや中央寄り（統合者）、他は均等配置
+      const isEi = hat === 'blue'
+      const r = isEi ? orbit * 0.6 : orbit
       const color = hexToRgb(HAT_COLORS[hat] ?? '#94a3b8')
-      const baseRadius = 7 + (data.intensity / 5) * 5
+      // intensity の絶対値でビジュアル強度を決定（色ではなく数値が支配する）
+      const absIntensity = Math.abs(data.intensity)
+      const baseRadius = 5 + (absIntensity / 5) * 12  // 0→5px, 5→17px
       geos.push({
         x: cx + Math.cos(angle) * r,
         y: cy + Math.sin(angle) * r,
@@ -164,9 +186,9 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
         kanji: data.kanji,
         stance: data.stance,
         intensity: data.intensity,
-        isDominant: dominantHats.includes(hat),
+        isDominant: dominantHats.includes(hat as HatColor),
         color,
-        baseRadius: dominantHats.includes(hat) ? baseRadius * 1.6 : baseRadius,
+        baseRadius: isEi ? Math.max(baseRadius, 10) : baseRadius, // 叡は最低サイズ保証
       })
     })
 
@@ -174,53 +196,65 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
   }, [pipeline])
 
   // ============================================================
-  // Trace a field line (Euler method)
+  // Magnetic field vector at any point (プロトタイプ忠実移植)
+  // ============================================================
+
+  const fieldAt = useCallback((
+    x: number, y: number, geos: AgentGeo[], cx: number, cy: number, t: number,
+  ): { x: number; y: number } => {
+    let bx = 0, by = 0
+
+    // 中央核の引力
+    const dxc = cx - x, dyc = cy - y
+    const dc = Math.sqrt(dxc * dxc + dyc * dyc) + 1
+    bx += dxc / (dc * dc) * 800
+    by += dyc / (dc * dc) * 800
+
+    // 各エージェントの影響（引力・斥力・揺れ）
+    for (const ag of geos) {
+      const dx = ag.x - x, dy = ag.y - y
+      const d = Math.sqrt(dx * dx + dy * dy) + 1
+
+      let charge = ag.stance === 'support' ? 1.0
+        : ag.stance === 'oppose' ? -1.0
+        : Math.sin(t * 1.5 + ag.x * 0.01) * 0.8  // caution = 揺れ
+
+      // intensityで影響の強さをスケール
+      charge *= (ag.intensity / 5) * 1.5 + 0.3  // intensity 0でも微弱な影響
+
+      const strength = charge * 400 / (d * d)
+      bx += dx * strength
+      by += dy * strength
+    }
+
+    const mag = Math.sqrt(bx * bx + by * by) + 0.001
+    return { x: bx / mag, y: by / mag }
+  }, [])
+
+  // ============================================================
+  // Trace a field line (磁場ベクトルに沿って追跡)
   // ============================================================
 
   const traceLine = useCallback((
     startX: number, startY: number, geos: AgentGeo[], cx: number, cy: number,
-    steps: number, stepSize: number, t: number, sourceStance: string,
+    steps: number, stepSize: number, t: number, _sourceStance: string,
   ) => {
     const pts: Array<{ x: number; y: number }> = [{ x: startX, y: startY }]
     let px = startX, py = startY
 
     for (let s = 0; s < steps; s++) {
-      // Vector to center
-      const toCx = cx - px, toCy = cy - py
-      const toD = Math.sqrt(toCx * toCx + toCy * toCy) || 1
-      const toUx = toCx / toD, toUy = toCy / toD
+      const f = fieldAt(px, py, geos, cx, cy, t)
+      px += f.x * stepSize
+      py += f.y * stepSize
 
-      // Influence from all agents
-      let fx = 0, fy = 0
-      for (const ag of geos) {
-        const dx = ag.x - px, dy = ag.y - py
-        const d = Math.sqrt(dx * dx + dy * dy) || 1
-        const charge = ag.stance === 'support' ? 1 : ag.stance === 'oppose' ? -0.6 : Math.sin(t * 2 + ag.x) * 0.5
-        fx += (dx / d) * charge * (ag.intensity / 5) * 200 / (d + 50)
-        fy += (dy / d) * charge * (ag.intensity / 5) * 200 / (d + 50)
-      }
-
-      // Center attraction
-      const progress = s / steps
-      const centerPull = sourceStance === 'support' ? 0.6 + progress * 0.4
-        : sourceStance === 'oppose' ? 0.1 - progress * 0.05
-        : 0.3 + Math.sin(t * 1.5) * 0.15
-
-      const mx = toUx * centerPull + fx * 0.001
-      const my = toUy * centerPull + fy * 0.001
-      const ml = Math.sqrt(mx * mx + my * my) || 1
-
-      px += (mx / ml) * stepSize
-      py += (my / ml) * stepSize
-
-      // Stop if reached center
+      // 中央核に近すぎたら停止
       const dc = Math.sqrt((px - cx) ** 2 + (py - cy) ** 2)
-      if (dc < 20) { pts.push({ x: cx, y: cy }); break }
+      if (dc < 15) break
 
       pts.push({ x: px, y: py })
     }
     return pts
-  }, [])
+  }, [fieldAt])
 
   // ============================================================
   // Draw
@@ -269,7 +303,10 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
         if (ai > litIdx) continue
       }
 
-      const lineCount = ag.isDominant ? 10 : 6
+      // 力線の本数・太さ・透明度 = intensity の絶対値に厳密対応
+      // intensity 0 でも1本の薄い力線を残す（全員が力場に存在する）
+      const absInt = Math.abs(ag.intensity)
+      const lineCount = absInt === 0 ? 1 : Math.round(absInt * 2)  // 0→1本, 1→2, 3→6, 5→10
       const stanceHue = STANCE_HUE[ag.stance as keyof typeof STANCE_HUE] ?? STANCE_HUE.caution
 
       for (let li = 0; li < lineCount; li++) {
@@ -278,16 +315,14 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
         const sx = ag.x + Math.cos(spreadAngle) * startDist
         const sy = ag.y + Math.sin(spreadAngle) * startDist
 
-        const pts = traceLine(sx, sy, geos, cx, cy, 35, 4, t, ag.stance)
+        const pts = traceLine(sx, sy, geos, cx, cy, 150, 2.5, t, ag.stance)
         if (pts.length < 2) continue
 
-        // Line width: dominant agents get thicker, higher intensity = thicker
-        const baseWidth = ag.isDominant ? 1.8 : 0.7
-        const intensityBoost = (ag.intensity / 5) * 0.8
-        const lineWidth = baseWidth + intensityBoost
+        // Line width: intensity の絶対値に厳密対応
+        const lineWidth = 0.3 + (absInt / 5) * 2.2  // 1→0.74, 3→1.62, 5→2.5
 
-        // Alpha: dominant agents are brighter
-        const baseAlpha = ag.isDominant ? 0.55 : 0.25
+        // Alpha: intensity の絶対値に対応
+        const baseAlpha = 0.15 + (absInt / 5) * 0.5  // 1→0.25, 3→0.45, 5→0.65
         const thinkingDim = isThinking ? 0.6 : 1
 
         ctx.beginPath()
@@ -339,11 +374,15 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
     ctx.fill()
     ctx.shadowBlur = 0
 
-    // 叡 label
-    ctx.font = 'bold 10px sans-serif'
-    ctx.fillStyle = isDark ? '#e2e8f0' : '#1e3a8a'
-    ctx.textAlign = 'center'
-    ctx.fillText('叡', cx, cy + coreR + 14)
+    // 中央は「問い」の核（叡ではない）
+    if (pipeline.structured?.clarified) {
+      const topic = pipeline.structured.clarified
+      const label = topic.length > 18 ? topic.slice(0, 18) + '…' : topic
+      ctx.font = `${Math.min(10, 800 / label.length)}px sans-serif`
+      ctx.fillStyle = isDark ? 'rgba(226,232,240,0.5)' : 'rgba(30,58,138,0.4)'
+      ctx.textAlign = 'center'
+      ctx.fillText(label, cx, cy + coreR + 14)
+    }
 
     // ── Agent nodes ──
     for (let ai = 0; ai < geos.length; ai++) {
@@ -356,11 +395,12 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
         nodeAlpha = ai <= litIdx ? 1 : 0.15
       }
 
-      const pulse = Math.sin(t * 3 + ai * 1.2) * (ag.isDominant ? 2.5 : 1)
+      const absInt = Math.abs(ag.intensity)
+      const pulse = Math.sin(t * 3 + ai * 1.2) * (absInt / 5) * 2.5  // intensity高い→脈動大きい
       const r = ag.baseRadius + pulse
 
-      // Glow (stronger for dominant)
-      const glowR = ag.isDominant ? r * 4 : r * 2.5
+      // Glow: intensity の絶対値に比例
+      const glowR = r * (1.5 + (absInt / 5) * 3)  // 0→1.5倍, 5→4.5倍
       const glowGrad = ctx.createRadialGradient(ag.x, ag.y, 0, ag.x, ag.y, glowR)
       const [gr, gg, gb] = ag.color
       glowGrad.addColorStop(0, rgba(gr, gg, gb, 0.3 * nodeAlpha))
@@ -374,7 +414,7 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
       ctx.beginPath()
       ctx.arc(ag.x, ag.y, r, 0, Math.PI * 2)
       ctx.fillStyle = rgba(gr, gg, gb, nodeAlpha)
-      if (isDark) { ctx.shadowColor = rgba(gr, gg, gb, 0.5); ctx.shadowBlur = ag.isDominant ? 14 : 6 }
+      if (isDark) { ctx.shadowColor = rgba(gr, gg, gb, 0.5); ctx.shadowBlur = 2 + (absInt / 5) * 14 }
       ctx.fill()
       ctx.shadowBlur = 0
 
@@ -384,12 +424,12 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
       ctx.fillStyle = rgba(255, 255, 255, 0.5 * nodeAlpha)
       ctx.fill()
 
-      // Dominant ring
-      if (ag.isDominant) {
+      // Dominant ring（intensity 3以上で表示）
+      if (absInt >= 3) {
         ctx.beginPath()
         ctx.arc(ag.x, ag.y, r + 4, 0, Math.PI * 2)
-        ctx.strokeStyle = rgba(gr, gg, gb, 0.6 * nodeAlpha)
-        ctx.lineWidth = 1.5
+        ctx.strokeStyle = rgba(gr, gg, gb, (absInt / 5) * 0.7 * nodeAlpha)
+        ctx.lineWidth = 0.8 + (absInt / 5) * 1.5
         ctx.stroke()
       }
 
