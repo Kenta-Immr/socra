@@ -6,6 +6,7 @@ import { AGENTS } from '@/types'
 import type { HatColor } from '@/types'
 import { useTheme } from '@/hooks/useTheme'
 import { t, LOCALE_FLAGS, LOCALE_LABELS, type Locale } from '@/i18n/locales'
+import { saveSession, updateSession } from '@/lib/supabase'
 import dynamic from 'next/dynamic'
 
 const MindMap = dynamic(() => import('@/components/MindMap'), { ssr: false })
@@ -52,6 +53,10 @@ export default function Home() {
   // マップノード詳細パネル
   const [selectedNode, setSelectedNode] = useState<MindNode | null>(null)
 
+  // セッション保存
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [shareUrl, setShareUrl] = useState<string | null>(null)
+
   // モバイルタブ切り替え
   const [mobileTab, setMobileTab] = useState<'chat' | 'map'>('chat')
 
@@ -96,6 +101,28 @@ export default function Home() {
       setCurrentRound(prev => prev + 1)
       // モバイル: 完走時にMapタブへ自動切り替え
       if (window.innerWidth < 768) setMobileTab('map')
+
+      // セッション保存（Supabase）
+      const roundData = {
+        question: pipeline.structured?.original ?? '',
+        agents: pipeline.agents.map(a => ({ hat: a.hat, name: a.name, stance: a.stance, intensity: a.intensity, reasoning: a.reasoning, keyPoints: a.keyPoints })),
+        synthesis: pipeline.synthesis ? { recommendation: pipeline.synthesis.recommendation, nextSteps: pipeline.synthesis.nextSteps } : null,
+        verification: pipeline.verification ? { overallConsistency: pipeline.verification.overallConsistency, contradictions: pipeline.verification.contradictions } : null,
+      }
+      if (!sessionId) {
+        saveSession({ question: pipeline.structured?.original ?? '', locale, rounds: [roundData] }).then(id => {
+          if (id) {
+            setSessionId(id)
+            setShareUrl(`${window.location.origin}/session/${id}`)
+          }
+        })
+      } else {
+        // フォローアップ: 既存セッションにラウンド追加
+        const prevRounds = JSON.parse(localStorage.getItem(`socra-rounds-${sessionId}`) ?? '[]')
+        const newRounds = [...prevRounds, roundData]
+        localStorage.setItem(`socra-rounds-${sessionId}`, JSON.stringify(newRounds))
+        updateSession(sessionId, newRounds)
+      }
     }
   }, [pipeline.status, pipeline.structured, pipeline.synthesis, pipeline.agents])
 
@@ -355,6 +382,20 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      {/* セッション共有URL */}
+      {shareUrl && pipeline.status === 'complete' && (
+        <div className="px-4 md:px-6 py-1.5 flex items-center gap-2 border-t" style={{ borderColor: 'var(--border)', background: 'var(--bg-secondary)' }}>
+          <span className="text-[10px]" style={{ color: 'var(--text-dim)' }}>Session saved</span>
+          <button
+            onClick={() => { navigator.clipboard.writeText(shareUrl); }}
+            className="text-[10px] px-2 py-0.5 rounded border hover:bg-[var(--bg-tertiary)]"
+            style={{ borderColor: 'var(--border-input)', color: 'var(--text-muted)' }}
+          >
+            Copy link
+          </button>
+        </div>
+      )}
 
       {/* 入力エリア（画面下部固定） */}
       <div className="border-t px-4 md:px-6 py-2 md:py-3" style={{ borderColor: 'var(--border)', background: 'var(--bg-primary)' }}>
