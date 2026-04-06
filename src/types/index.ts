@@ -82,6 +82,7 @@ export interface ObservationResult {
 export interface Fact {
   content: string
   source: string
+  url?: string
   confidence: 'high' | 'medium' | 'low'
 }
 

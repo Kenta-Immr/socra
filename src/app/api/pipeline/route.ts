@@ -3,7 +3,7 @@
 import { runStructure, runObserve, runDeliberate, runVerify, runSynthesize, runRouting } from '@/lib/pipeline/engine'
 import type { SSEEvent } from '@/types'
 
-export const maxDuration = 120  // Vercel Pro: 最大300秒。Free: 60秒
+export const maxDuration = 300  // Vercel Pro: 最大300秒。Web検索込みで余裕を持つ
 
 export async function POST(req: Request) {
   const { question, context } = await req.json()

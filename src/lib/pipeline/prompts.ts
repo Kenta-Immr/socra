@@ -47,21 +47,31 @@ ${sq.context.map(c => `- ${c}`).join('\n')}
 ${sq.stakeholders.join(', ')}
 
 ## Your Task
-Gather relevant GENERAL facts for this type of decision:
-1. General market trends or industry benchmarks (if applicable)
-2. Common patterns when others faced similar decisions
-3. General regulatory or legal considerations
-4. Frameworks or principles relevant to this type of decision
+You have access to Google Search. **ALWAYS search the web first** before providing facts. Do NOT rely on your training data alone — information changes daily, especially in tech and business.
 
-## CRITICAL ANTI-HALLUCINATION RULES
-- **NEVER invent specific numbers** (percentages, growth rates, market sizes) unless you are genuinely confident they are accurate. Use ranges or qualitative descriptions instead.
-- **NEVER assume details the user hasn't stated.** If the user hasn't specified their industry, product, or business model, DO NOT guess. Provide general facts applicable to the decision type.
-- Mark confidence level STRICTLY: "high" = widely known and verifiable, "medium" = generally accepted but hard to verify exactly, "low" = rough estimate or anecdotal
-- If you cannot provide reliable data on a topic, explicitly say "Data not available" rather than making something up.
-- **Prefer general principles over specific statistics.** "Most new ventures fail within 3 years" is better than fabricating "73.2% of startups fail."
-- Aim for 5-8 facts. Quality over quantity — 3 solid facts beat 8 questionable ones.
+Search for:
+1. Latest market trends, data, and industry benchmarks relevant to this decision
+2. Recent articles, reports, or case studies from others who faced similar decisions
+3. Current regulatory or legal considerations
+4. Up-to-date frameworks or best practices
 
-Respond in the same language as the decision question.`,
+## CRITICAL RULES
+- **ALWAYS use Google Search** to gather current information. Your training data may be outdated.
+- For EVERY fact, include the source URL where you found it. If no URL, mark source as "General knowledge" with confidence "medium" or lower.
+- Mark confidence level: "high" = found in reliable recent source with URL, "medium" = found but source is older or less authoritative, "low" = general knowledge without specific source
+- **NEVER invent URLs or source titles.** If you don't have a URL, leave the url field empty.
+- Aim for 5-8 facts. Quality over quantity.
+
+## Response Format
+Respond with a JSON object (no markdown code blocks):
+{
+  "facts": [
+    { "content": "fact text", "source": "Source name", "url": "https://...", "confidence": "high" }
+  ],
+  "dataSources": ["https://url1", "https://url2"]
+}
+
+Respond in the SAME LANGUAGE as the decision question.`,
 
   // ── Stage 2: 並列判断（情・戒・光・創）────────────
   deliberate: (hat: HatColor, sq: StructuredQuestion, facts: Fact[]) => {
@@ -252,8 +262,8 @@ Then:
 2. **What your team agrees on** (this is often overlooked)
 3. **The key risk** — the one thing that would make this decision fail
 4. **The key opportunity** — the one thing that makes this worth pursuing
-5. **2-3 concrete next steps** — not "think more" but specific actions
-6. **Close with a question** — one question that, if answered, would make the decision clear
+5. **2-3 questions to move forward** — questions that, if answered, would make the next step obvious. Frame as "What would you need to know to...?" or "Have you considered...?" — NOT directives like "Do X"
+6. **Close with THE question** — the one deepest question that cuts to the heart of this decision. Make the user feel it.
 
 ## Rules
 - Speak directly to the decision-maker ("You..." not "The user...")

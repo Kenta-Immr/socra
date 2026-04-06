@@ -371,7 +371,13 @@ function StreamEntry({ entry, pipeline, expanded, onToggle }: {
                   }`}>{fact.confidence}</span>
                   <div>
                     <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{fact.content}</p>
-                    <p className="text-[10px]" style={{ color: 'var(--text-ghost)' }}>{fact.source}</p>
+                    {fact.url ? (
+                      <a href={fact.url} target="_blank" rel="noopener noreferrer" className="text-[10px] hover:underline" style={{ color: 'var(--text-ghost)' }}>
+                        {fact.source} ↗
+                      </a>
+                    ) : (
+                      <p className="text-[10px]" style={{ color: 'var(--text-ghost)' }}>{fact.source}</p>
+                    )}
                   </div>
                 </div>
               ))}
@@ -582,8 +588,10 @@ function StreamEntry({ entry, pipeline, expanded, onToggle }: {
           </div>
         )}
 
-        {/* マインドマップ（議論構造図） */}
-        <MindMap pipeline={pipeline} />
+        {/* マインドマップ（モバイルのみ — PCは右ペインにフル表示） */}
+        <div className="md:hidden">
+          <MindMap pipeline={pipeline} />
+        </div>
 
         {/* 次の一歩の問いかけ */}
         <div className="mt-4 pt-3 border-t text-center" style={{ borderColor: `${AGENTS.blue.hex}30` }}>

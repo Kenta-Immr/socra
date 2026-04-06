@@ -1,6 +1,7 @@
 // Socra パイプラインエンジン — 5段パイプラインの実行制御
 import { generateText, generateObject } from 'ai'
 import { z } from 'zod'
+import { google } from '@ai-sdk/google'
 import { models } from './providers'
 import { prompts } from './prompts'
 import { AGENTS } from '@/types'
@@ -79,22 +80,54 @@ export async function runStructure(question: string, userContext?: string): Prom
   return { original: question, ...object }
 }
 
-// ── Stage 1: 明（Mei）— 事実収集（Gemini）──────────────
+// ── Stage 1: 明（Mei）— 事実収集（Gemini + Web検索）──────
 export async function runObserve(sq: StructuredQuestion): Promise<ObservationResult> {
-  const { object } = await generateObject({
+  // Gemini + Google Search Grounding で最新情報を取得
+  const result = await generateText({
     model: models.observe,
-    schema: z.object({
-      facts: z.array(z.object({
-        content: z.string(),
-        source: z.string(),
-        confidence: z.enum(['high', 'medium', 'low']),
-      })).describe('収集した事実'),
-      dataSources: z.array(z.string()).describe('参照した情報源'),
-    }),
+    tools: { google_search: google.tools.googleSearch({}) },
     prompt: prompts.observe(sq),
   })
 
-  return { hat: 'white', model: 'gemini', ...object }
+  const text = result.text
+
+  // sourcesからURL型のみ抽出
+  const groundingSources = (result.sources ?? [])
+    .filter(s => s.sourceType === 'url')
+    .map(s => ({ url: (s as { url: string }).url, title: (s as { title?: string }).title }))
+
+  // テキスト応答をJSONとしてパース
+  let parsed: { facts: Array<{ content: string; source: string; url?: string; confidence: string }>; dataSources: string[] }
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      parsed = JSON.parse(jsonMatch[0])
+    } else {
+      throw new Error('No JSON found')
+    }
+  } catch {
+    // JSONパース失敗時はテキストからfactを構成
+    parsed = {
+      facts: [{ content: text.slice(0, 500), source: 'Web search results', confidence: 'medium' }],
+      dataSources: groundingSources.map(s => s.url),
+    }
+  }
+
+  // grounding sourcesのURLをfactに紐付け
+  const facts: Fact[] = parsed.facts.map((f, i) => ({
+    content: f.content,
+    source: f.source,
+    url: f.url || groundingSources[i]?.url,
+    confidence: (['high', 'medium', 'low'].includes(f.confidence) ? f.confidence : 'medium') as Fact['confidence'],
+  }))
+
+  // データソースにgrounding URLも追加
+  const allSources = Array.from(new Set([
+    ...(parsed.dataSources ?? []),
+    ...groundingSources.map(s => s.url),
+  ]))
+
+  return { hat: 'white', model: 'gemini', facts, dataSources: allSources }
 }
 
 // ── Stage 2: 並列判断（情・戒・光・創）───────────────
