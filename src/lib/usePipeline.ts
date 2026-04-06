@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef } from 'react'
-import type { SSEEvent, PipelineStage, AgentResponse, StructuredQuestion, ObservationResult, VerificationResult, SynthesisResult } from '@/types'
+import type { SSEEvent, PipelineStage, AgentResponse, StructuredQuestion, ObservationResult, VerificationResult, SynthesisResult, HatColor } from '@/types'
 
 export type TimelineEntry = {
   id: string
@@ -255,5 +255,132 @@ export function usePipeline() {
     setState(prev => ({ ...prev, status: 'error', error }))
   }, [])
 
-  return { ...state, run, setError }
+  // セッション復元: 過去のラウンドデータからUI状態を再構築
+  const restore = useCallback((rounds: Array<{
+    question?: string
+    agents?: Array<{ hat: string; name: string; stance: string; intensity: number; reasoning: string; keyPoints: string[] }>
+    synthesis?: { recommendation: string; nextSteps: string[] }
+    verification?: { overallConsistency: number; contradictions: Array<{ hat1: string; hat2: string; description: string }> }
+  }>) => {
+    const timeline: TimelineEntry[] = []
+    const allRounds: RoundData[] = []
+
+    rounds.forEach((round, ri) => {
+      // ユーザーの質問
+      if (round.question) {
+        timeline.push({
+          id: `restored-user-${ri}`,
+          type: 'user',
+          stage: 'structure',
+          content: round.question,
+          timestamp: new Date().toISOString(),
+        })
+      }
+
+      // エージェント発言
+      const agents: AgentResponse[] = (round.agents ?? []).map(a => ({
+        ...a,
+        hat: a.hat as AgentResponse['hat'],
+        stance: a.stance as AgentResponse['stance'],
+        keyPoints: a.keyPoints ?? [],
+        model: 'openai' as const,
+      })) as AgentResponse[]
+
+      agents.forEach(a => {
+        timeline.push({
+          id: `restored-agent-${a.hat}-${ri}`,
+          type: 'agent',
+          name: a.name,
+          hat: a.hat,
+          stage: 'deliberate',
+          content: a.reasoning,
+          stance: a.stance,
+          intensity: a.intensity,
+          timestamp: new Date().toISOString(),
+        })
+      })
+
+      // 検証
+      if (round.verification) {
+        timeline.push({
+          id: `restored-ri-${ri}`,
+          type: 'agent',
+          name: 'Ri',
+          hat: 'verify',
+          stage: 'verify',
+          content: [
+            `論理整合性: ${round.verification.overallConsistency}/100`,
+            ...round.verification.contradictions.map(c => `⚡ ${c.description}`),
+          ].join('\n'),
+          timestamp: new Date().toISOString(),
+        })
+      }
+
+      // 統合
+      if (round.synthesis) {
+        timeline.push({
+          id: `restored-ei-${ri}`,
+          type: 'synthesis',
+          name: 'Ei',
+          hat: 'blue',
+          stage: 'synthesize',
+          content: round.synthesis.recommendation,
+          timestamp: new Date().toISOString(),
+        })
+      }
+
+      allRounds.push({
+        round: ri,
+        question: round.question ?? '',
+        agents,
+        structured: null,
+      })
+    })
+
+    const lastRound = rounds[rounds.length - 1]
+    const lastAgents = (lastRound?.agents ?? []).map(a => ({
+      ...a,
+      hat: a.hat as AgentResponse['hat'],
+      stance: a.stance as AgentResponse['stance'],
+      keyPoints: a.keyPoints ?? [],
+      model: 'openai' as const,
+    })) as AgentResponse[]
+
+    roundRef.current = rounds.length
+
+    setState({
+      status: 'complete',
+      currentStage: null,
+      timeline,
+      structured: null,
+      observation: null,
+      agents: lastAgents,
+      verification: lastRound?.verification ? {
+        overallConsistency: lastRound.verification.overallConsistency,
+        contradictions: lastRound.verification.contradictions.map(c => ({
+          ...c,
+          hat1: c.hat1 as HatColor,
+          hat2: c.hat2 as HatColor,
+          severity: 'moderate' as const,
+        })),
+        factGaps: [],
+        hat: 'blue' as const,
+        model: 'openai' as const,
+      } satisfies VerificationResult : null,
+      synthesis: lastRound?.synthesis ? {
+        hat: 'blue' as const,
+        model: 'claude' as const,
+        recommendation: lastRound.synthesis.recommendation,
+        nextSteps: lastRound.synthesis.nextSteps,
+        riskNodes: [],
+        decisionMap: { nodes: [], edges: [] },
+        radarChart: { axes: [], pattern: 'Balanced' },
+      } as SynthesisResult : null,
+      error: null,
+      round: rounds.length,
+      allRounds,
+    })
+  }, [])
+
+  return { ...state, run, setError, restore }
 }

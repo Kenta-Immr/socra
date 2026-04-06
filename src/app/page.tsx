@@ -245,7 +245,32 @@ export default function Home() {
       <SessionSidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        onSelectSession={(id) => { window.location.href = `/session/${id}` }}
+        onSelectSession={async (id) => {
+          const { loadSession } = await import('@/lib/supabase')
+          const session = await loadSession(id)
+          if (session) {
+            setSessionId(id)
+            setShareUrl(`${window.location.origin}/session/${id}`)
+            setOriginalQuestion(session.question)
+            const rounds = session.rounds as Array<{
+              question?: string
+              agents?: Array<{ hat: string; name: string; stance: string; intensity: number; reasoning: string; keyPoints: string[] }>
+              synthesis?: { recommendation: string; nextSteps: string[] }
+              verification?: { overallConsistency: number; contradictions: Array<{ hat1: string; hat2: string; description: string }> }
+            }>
+            // セッション履歴を復元
+            const history = rounds.map(r => {
+              const parts: string[] = []
+              if (r.question) parts.push(`Question: ${r.question}`)
+              if (r.synthesis) parts.push(`Ei: ${r.synthesis.recommendation.slice(0, 300)}`)
+              r.agents?.forEach(a => parts.push(`${a.name}(${a.stance}): ${a.reasoning.slice(0, 100)}`))
+              return parts.join('\n')
+            })
+            setSessionHistory(history)
+            setContextPhase('done')
+            pipeline.restore(rounds)
+          }
+        }}
         onNewSession={() => { window.location.href = '/' }}
         locale={locale}
         onLocaleChange={setLocale}
