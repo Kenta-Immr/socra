@@ -5,6 +5,9 @@ import { usePipeline, type TimelineEntry } from '@/lib/usePipeline'
 import { AGENTS } from '@/types'
 import type { HatColor } from '@/types'
 import { useTheme } from '@/hooks/useTheme'
+import dynamic from 'next/dynamic'
+
+const MindMap = dynamic(() => import('@/components/MindMap'), { ssr: false })
 
 // ── 色ヘルパー ───────────────────────────────────────
 function hatColor(hat?: string): string {
@@ -561,6 +564,9 @@ function StreamEntry({ entry, pipeline, expanded, onToggle }: {
             </div>
           </div>
         )}
+
+        {/* マインドマップ（議論構造図） */}
+        <MindMap pipeline={pipeline} />
 
         {/* 次の一歩の問いかけ */}
         <div className="mt-4 pt-3 border-t text-center" style={{ borderColor: `${AGENTS.blue.hex}30` }}>
