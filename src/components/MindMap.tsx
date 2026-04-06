@@ -7,6 +7,7 @@ import type { PipelineUI } from '@/lib/usePipeline'
 
 type Props = {
   pipeline: PipelineUI
+  fullScreen?: boolean  // 2ペインの右側で使う場合
 }
 
 interface MindNode {
@@ -14,73 +15,52 @@ interface MindNode {
   label: string
   color: string
   type: 'question' | 'agent' | 'synthesis' | 'keypoint'
-  parentId?: string
   stance?: string
 }
 
 interface MindEdge {
   source: string
   target: string
-  type: 'branch' | 'contradict' | 'agree'
+  type: 'branch' | 'contradict'
 }
 
 function buildMindMapData(pipeline: PipelineUI): { nodes: MindNode[]; edges: MindEdge[] } {
   const nodes: MindNode[] = []
   const edges: MindEdge[] = []
-
   if (!pipeline.structured) return { nodes, edges }
 
-  // 中心: 質問
-  nodes.push({
-    id: 'q',
-    label: pipeline.structured.clarified.slice(0, 40),
-    color: '#3B82F6',
-    type: 'question',
-  })
+  nodes.push({ id: 'q', label: pipeline.structured.clarified.slice(0, 35), color: '#3B82F6', type: 'question' })
 
-  // エージェントの核心1文 + スタンス
   pipeline.agents.forEach(agent => {
-    const agentInfo = AGENTS[agent.hat]
+    const info = AGENTS[agent.hat]
     const nodeId = `a-${agent.hat}`
     nodes.push({
       id: nodeId,
-      label: agent.keyPoints[0]?.slice(0, 35) ?? agent.reasoning.slice(0, 35),
-      color: agentInfo.hex,
+      label: `${info.name}: ${agent.keyPoints[0]?.slice(0, 25) ?? agent.reasoning.slice(0, 25)}`,
+      color: info.hex,
       type: 'agent',
       stance: agent.stance,
     })
     edges.push({ source: 'q', target: nodeId, type: 'branch' })
 
-    // キーポイント（最大2個）
-    agent.keyPoints.slice(1, 3).forEach((kp, i) => {
-      const kpId = `kp-${agent.hat}-${i}`
-      nodes.push({
-        id: kpId,
-        label: kp.slice(0, 30),
-        color: agentInfo.hex,
-        type: 'keypoint',
-        parentId: nodeId,
-      })
+    // キーポイント1個だけ（被り防止）
+    if (agent.keyPoints.length > 1) {
+      const kpId = `kp-${agent.hat}`
+      nodes.push({ id: kpId, label: agent.keyPoints[1].slice(0, 20), color: info.hex, type: 'keypoint' })
       edges.push({ source: nodeId, target: kpId, type: 'branch' })
-    })
+    }
   })
 
-  // 矛盾エッジ
   if (pipeline.verification) {
     pipeline.verification.contradictions.forEach(c => {
-      edges.push({
-        source: `a-${c.hat1}`,
-        target: `a-${c.hat2}`,
-        type: 'contradict',
-      })
+      edges.push({ source: `a-${c.hat1}`, target: `a-${c.hat2}`, type: 'contradict' })
     })
   }
 
-  // 統合
   if (pipeline.synthesis) {
     nodes.push({
       id: 'ei',
-      label: pipeline.synthesis.recommendation.split('\n')[0]?.slice(0, 40) ?? 'Synthesis',
+      label: `叡: ${pipeline.synthesis.recommendation.split('\n')[0]?.slice(0, 30) ?? ''}`,
       color: AGENTS.blue.hex,
       type: 'synthesis',
     })
@@ -92,146 +72,166 @@ function buildMindMapData(pipeline: PipelineUI): { nodes: MindNode[]; edges: Min
   return { nodes, edges }
 }
 
+// テキストを折り返す（maxWidth文字で改行）
+function wrapText(text: string, maxChars: number): string[] {
+  const lines: string[] = []
+  for (let i = 0; i < text.length; i += maxChars) {
+    lines.push(text.slice(i, i + maxChars))
+  }
+  return lines
+}
+
 interface SimNode extends d3.SimulationNodeDatum {
   id: string
   label: string
   color: string
   type: MindNode['type']
   stance?: string
+  width: number
+  height: number
 }
 
 interface SimEdge extends d3.SimulationLinkDatum<SimNode> {
   type: MindEdge['type']
 }
 
-export default function MindMap({ pipeline }: Props) {
+export default function MindMap({ pipeline, fullScreen }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
 
   useEffect(() => {
-    if (!svgRef.current || !pipeline.synthesis) return
+    if (!svgRef.current || !containerRef.current || !pipeline.synthesis) return
     const svgEl = svgRef.current
+    const container = containerRef.current
     const svg = d3.select(svgEl)
 
-    const width = svgEl.clientWidth
-    const height = 400
-    svgEl.setAttribute('height', String(height))
+    const width = container.clientWidth
+    const height = fullScreen ? container.clientHeight : 420
 
     const { nodes: rawNodes, edges: rawEdges } = buildMindMapData(pipeline)
     if (rawNodes.length === 0) return
 
-    // テーマ検出
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
-    const bgColor = isDark ? '#111' : '#f8f9fa'
+    const bgColor = isDark ? '#0a0a0a' : '#f8f9fa'
     const textColor = isDark ? '#e5e5e5' : '#1a1a1a'
-    const mutedColor = isDark ? '#888' : '#666'
-    const lineColor = isDark ? '#444' : '#ccc'
+    const mutedColor = isDark ? '#999' : '#555'
+    const lineColor = isDark ? '#556' : '#bbb'
 
-    const simNodes: SimNode[] = rawNodes.map(n => ({ ...n }))
+    // ノードサイズをテキスト長から計算
+    const maxChars = 15
+    const simNodes: SimNode[] = rawNodes.map(n => {
+      const lines = wrapText(n.label, maxChars)
+      const w = Math.min(n.label.length, maxChars) * 7 + 28
+      const h = lines.length * 16 + 20
+      return { ...n, width: w, height: h }
+    })
+
     const nodeMap = new Map(simNodes.map(n => [n.id, n]))
     const simEdges: SimEdge[] = rawEdges
       .filter(e => nodeMap.has(e.source as string) && nodeMap.has(e.target as string))
       .map(e => ({ source: e.source, target: e.target, type: e.type }))
 
-    // 初期配置
-    simNodes.forEach(n => {
-      if (n.type === 'question') { n.x = width / 2; n.y = height / 2 }
-      else if (n.type === 'synthesis') { n.x = width / 2; n.y = height - 50 }
-    })
-
     svg.selectAll('*').remove()
-    svg.attr('viewBox', `0 0 ${width} ${height}`)
+    svg.attr('width', width).attr('height', height)
+
+    const g = svg.append('g')
+
+    // ズーム
+    const zoom = d3.zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.3, 3])
+      .on('zoom', (event) => { g.attr('transform', event.transform) })
+    svg.call(zoom)
+    svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(fullScreen ? 0.7 : 0.85))
 
     // エッジ
-    const linkGroup = svg.append('g')
+    const linkGroup = g.append('g')
     const links = linkGroup.selectAll('line')
       .data(simEdges)
       .enter().append('line')
       .attr('stroke', d => d.type === 'contradict' ? '#EF4444' : lineColor)
-      .attr('stroke-width', d => d.type === 'contradict' ? 2 : 1)
-      .attr('stroke-dasharray', d => d.type === 'contradict' ? '6,3' : 'none')
+      .attr('stroke-width', d => d.type === 'contradict' ? 2.5 : 1)
+      .attr('stroke-dasharray', d => d.type === 'contradict' ? '8,4' : 'none')
       .attr('opacity', 0.7)
 
     // ノード
-    const nodeGroup = svg.append('g')
+    const nodeGroup = g.append('g')
     const nodeGs = nodeGroup.selectAll('g')
       .data(simNodes)
       .enter().append('g')
+      .call(d3.drag<SVGGElement, SimNode>()
+        .on('start', (event, d) => {
+          if (!event.active) sim.alphaTarget(0.1).restart()
+          d.fx = d.x; d.fy = d.y
+        })
+        .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y })
+        .on('end', (event, d) => {
+          if (!event.active) sim.alphaTarget(0)
+          d.fx = d.x; d.fy = d.y
+        })
+      )
 
-    // ノード背景（角丸長方形）
+    // 角丸長方形
     nodeGs.append('rect')
-      .attr('rx', d => d.type === 'question' || d.type === 'synthesis' ? 12 : 8)
-      .attr('ry', d => d.type === 'question' || d.type === 'synthesis' ? 12 : 8)
+      .attr('rx', 10).attr('ry', 10)
+      .attr('width', d => d.width)
+      .attr('height', d => d.height)
+      .attr('x', d => -d.width / 2)
+      .attr('y', d => -d.height / 2)
       .attr('fill', d => {
         if (d.type === 'question') return bgColor
-        return `${d.color}15`
+        return `${d.color}18`
       })
       .attr('stroke', d => d.color)
-      .attr('stroke-width', d => d.type === 'question' || d.type === 'synthesis' ? 2 : 1)
+      .attr('stroke-width', d => d.type === 'question' || d.type === 'synthesis' ? 2 : 1.5)
 
-    // テキスト
-    nodeGs.append('text')
-      .text(d => d.label)
-      .attr('text-anchor', 'middle')
-      .attr('dy', '0.35em')
-      .attr('fill', d => {
-        if (d.type === 'question' || d.type === 'synthesis') return textColor
-        if (d.type === 'keypoint') return mutedColor
-        return d.color
+    // テキスト（折り返し対応）
+    nodeGs.each(function (d) {
+      const g = d3.select(this)
+      const lines = wrapText(d.label, maxChars)
+      const lineHeight = 14
+      const startY = -(lines.length - 1) * lineHeight / 2
+
+      lines.forEach((line, i) => {
+        g.append('text')
+          .text(line)
+          .attr('text-anchor', 'middle')
+          .attr('dy', startY + i * lineHeight + 4)
+          .attr('fill', d.type === 'keypoint' ? mutedColor : d.type === 'question' ? textColor : d.color)
+          .attr('font-size', d.type === 'keypoint' ? '10px' : '11px')
+          .attr('font-weight', d.type === 'question' || d.type === 'synthesis' ? '600' : '400')
       })
-      .attr('font-size', d => {
-        if (d.type === 'question') return '13px'
-        if (d.type === 'synthesis') return '12px'
-        if (d.type === 'agent') return '11px'
-        return '10px'
-      })
-      .attr('font-weight', d => d.type === 'question' || d.type === 'synthesis' ? '600' : '400')
+    })
 
     // スタンスアイコン
     nodeGs.filter(d => d.type === 'agent' && d.stance !== undefined)
       .append('text')
       .text(d => d.stance === 'support' ? '▲' : d.stance === 'oppose' ? '▼' : '◆')
-      .attr('text-anchor', 'start')
+      .attr('text-anchor', 'middle')
+      .attr('dy', d => -d.height / 2 - 6)
       .attr('fill', d => d.stance === 'support' ? '#22C55E' : d.stance === 'oppose' ? '#EF4444' : '#F59E0B')
-      .attr('font-size', '9px')
-
-    // rectのサイズをテキストに合わせる
-    nodeGs.each(function () {
-      const g = d3.select(this)
-      const text = g.select('text')
-      const bbox = (text.node() as SVGTextElement).getBBox()
-      const paddingX = 14
-      const paddingY = 8
-      g.select('rect')
-        .attr('width', bbox.width + paddingX * 2)
-        .attr('height', bbox.height + paddingY * 2)
-        .attr('x', -bbox.width / 2 - paddingX)
-        .attr('y', -bbox.height / 2 - paddingY)
-
-      // スタンスアイコンの位置調整
-      const stance = g.select('text:nth-of-type(2)')
-      if (!stance.empty()) {
-        stance.attr('x', bbox.width / 2 + paddingX + 4).attr('dy', '0.35em')
-      }
-    })
+      .attr('font-size', '10px')
 
     // シミュレーション
     const sim = d3.forceSimulation<SimNode>(simNodes)
-      .alphaDecay(0.08)
-      .velocityDecay(0.5)
+      .alphaDecay(0.06)
+      .velocityDecay(0.45)
       .force('link', d3.forceLink<SimNode, SimEdge>(simEdges)
         .id(d => d.id)
-        .distance(d => d.type === 'branch' ? 90 : 150)
-        .strength(0.5)
+        .distance(d => d.type === 'contradict' ? 200 : 100)
+        .strength(0.4)
       )
-      .force('charge', d3.forceManyBody().strength(-200))
-      .force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
-      .force('collision', d3.forceCollide<SimNode>().radius(50).strength(0.8))
+      .force('charge', d3.forceManyBody().strength(-500))
+      .force('collide', d3.forceCollide<SimNode>()
+        .radius(d => Math.max(d.width, d.height) / 2 + 15)
+        .strength(1)
+      )
+      .force('center', d3.forceCenter(0, 0).strength(0.05))
       .force('y', d3.forceY<SimNode>(d => {
-        if (d.type === 'question') return height * 0.2
-        if (d.type === 'synthesis') return height * 0.85
-        if (d.type === 'agent') return height * 0.45
-        return height * 0.6
-      }).strength(0.15))
+        if (d.type === 'question') return -80
+        if (d.type === 'synthesis') return 120
+        if (d.type === 'agent') return 0
+        return 60
+      }).strength(0.1))
       .on('tick', () => {
         links
           .attr('x1', d => (d as unknown as { source: SimNode }).source.x ?? 0)
@@ -241,32 +241,37 @@ export default function MindMap({ pipeline }: Props) {
         nodeGs.attr('transform', d => `translate(${d.x ?? 0},${d.y ?? 0})`)
       })
 
-    // 出現アニメーション
-    nodeGs
-      .attr('opacity', 0)
-      .transition()
-      .duration(500)
-      .delay((_, i) => i * 80)
-      .attr('opacity', 1)
+    // アニメーション
+    nodeGs.attr('opacity', 0).transition().duration(500).delay((_, i) => i * 60).attr('opacity', 1)
+    links.attr('opacity', 0).transition().duration(400).delay(300).attr('opacity', 0.7)
 
-    links
-      .attr('opacity', 0)
-      .transition()
-      .duration(400)
-      .delay(300)
-      .attr('opacity', 0.7)
+    // リサイズ対応
+    const resizeObserver = new ResizeObserver(() => {
+      const w = container.clientWidth
+      const h = fullScreen ? container.clientHeight : 420
+      svg.attr('width', w).attr('height', h)
+      sim.force('center', d3.forceCenter(0, 0))
+      sim.alpha(0.05).restart()
+    })
+    resizeObserver.observe(container)
 
-    return () => { sim.stop() }
-  }, [pipeline.synthesis, pipeline.agents, pipeline.verification, pipeline.structured])
+    return () => { sim.stop(); resizeObserver.disconnect() }
+  }, [pipeline.synthesis, pipeline.agents, pipeline.verification, pipeline.structured, fullScreen])
 
-  if (!pipeline.synthesis) return null
+  if (!pipeline.synthesis && !fullScreen) return null
 
   return (
-    <div className="mt-4 rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-light)', background: 'var(--bg-secondary)' }}>
-      <div className="px-4 py-2 border-b" style={{ borderColor: 'var(--border)' }}>
-        <span className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-ghost)' }}>Discussion Structure</span>
-      </div>
-      <svg ref={svgRef} className="w-full" style={{ minHeight: '400px' }} />
+    <div
+      ref={containerRef}
+      className={fullScreen ? 'w-full h-full' : 'mt-4 rounded-xl border overflow-hidden'}
+      style={fullScreen ? { background: 'var(--bg-map)' } : { borderColor: 'var(--border-light)', background: 'var(--bg-secondary)' }}
+    >
+      {!fullScreen && (
+        <div className="px-4 py-2 border-b" style={{ borderColor: 'var(--border)' }}>
+          <span className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-ghost)' }}>Discussion Structure</span>
+        </div>
+      )}
+      <svg ref={svgRef} className="w-full" style={{ minHeight: fullScreen ? '100%' : '420px', background: fullScreen ? 'var(--bg-map-gradient)' : 'transparent' }} />
     </div>
   )
 }

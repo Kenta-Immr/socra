@@ -177,9 +177,11 @@ export default function Home() {
         </div>
       </header>
 
-      {/* ストリーム（1カラム） */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-6 py-6 space-y-4">
+      {/* メインエリア: PC=2ペイン、モバイル=1カラム */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* 左: チャットストリーム */}
+        <div className="w-full md:w-1/3 md:min-w-[360px] md:max-w-[480px] md:border-r overflow-y-auto" style={{ borderColor: 'var(--border)' }}>
+          <div className="px-4 py-4 space-y-3">
 
           {/* 初期状態 */}
           {pipeline.status === 'idle' && contextPhase === 'idle' && pipeline.timeline.length === 0 && (
@@ -250,9 +252,24 @@ export default function Home() {
         </div>
       </div>
 
+        {/* 右: マインドマップ（PC専用） */}
+        <div className="hidden md:block flex-1" style={{ background: 'var(--bg-map)' }}>
+          {(pipeline.status === 'running' || pipeline.status === 'complete') ? (
+            <MindMap pipeline={pipeline} fullScreen />
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center space-y-2">
+                <div className="text-3xl font-bold tracking-tighter bg-gradient-to-b from-[var(--text-primary)] to-[var(--text-faint)] bg-clip-text text-transparent">Socra</div>
+                <p className="text-xs" style={{ color: 'var(--text-ghost)' }}>Your thinking, visualized</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* 入力（画面下部固定） */}
       <div className="border-t px-6 py-3" style={{ borderColor: 'var(--border)', background: 'var(--bg-primary)' }}>
-        <form onSubmit={handleSubmit} className="max-w-3xl mx-auto flex gap-2">
+        <form onSubmit={handleSubmit} className="max-w-3xl md:max-w-[480px] flex gap-2">
           <input
             type="text"
             ref={inputRef}
