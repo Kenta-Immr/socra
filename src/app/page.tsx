@@ -325,7 +325,7 @@ export default function Home() {
               : 'What decision are you facing?'
             }
             disabled={pipeline.status === 'running' || loadingContextQs}
-            className="flex-1 px-3 md:px-4 py-2 md:py-2.5 rounded-xl border text-sm focus:outline-none focus:border-[#3B82F6] transition-colors disabled:opacity-50"
+            className="flex-1 px-3 md:px-4 py-2 md:py-2.5 rounded-xl border text-base md:text-sm focus:outline-none focus:border-[#3B82F6] transition-colors disabled:opacity-50"
             style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-input)', color: 'var(--text-primary)' }}
           />
           <button
