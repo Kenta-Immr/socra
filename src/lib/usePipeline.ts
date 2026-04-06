@@ -121,10 +121,13 @@ export function usePipeline() {
           const helplineText = crisisData.helplines
             .map((h: { name: string; number: string }) => `${h.name}: ${h.number}`)
             .join('\n')
+          const findHelpLine = crisisData.findHelpUrl
+            ? `\n\n🌐 あなたの地域の相談窓口を探す:\n${crisisData.findHelpUrl}`
+            : ''
           setState(prev => ({
             ...prev,
             status: 'error',
-            error: `${crisisData.message}\n\n${helplineText}`,
+            error: `${crisisData.message}\n\n${helplineText}${findHelpLine}`,
           }))
           return
         }

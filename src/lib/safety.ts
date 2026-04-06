@@ -22,6 +22,7 @@ export interface CrisisResponse {
   type: 'crisis'
   message: string
   helplines: { name: string; number: string; url?: string }[]
+  findHelpUrl: string
 }
 
 export function getCrisisResponse(locale?: string): CrisisResponse {
@@ -47,25 +48,18 @@ export function getCrisisResponse(locale?: string): CrisisResponse {
   }
 
   const messages: Record<string, string> = {
-    ja: 'あなたの気持ちは大切です。Socraは意思決定支援ツールであり、命に関わる問題には専門の相談窓口をご利用ください。今すぐ、下記に連絡してください。あなたは一人ではありません。',
-    en: 'Your feelings matter. Socra is a decision-support tool and is not equipped to help with crisis situations. Please reach out to a professional helpline immediately. You are not alone.',
-    zh: '您的感受很重要。Socra是一个决策支持工具，无法处理危机情况。请立即联系专业求助热线。您并不孤单。',
-    es: 'Tus sentimientos importan. Socra es una herramienta de apoyo a la toma de decisiones y no está preparada para situaciones de crisis. Por favor, contacta una línea de ayuda profesional inmediatamente. No estás solo/a.',
+    ja: 'あなたの気持ちは大切です。Socraは意思決定支援ツールであり、命に関わる問題には専門の相談窓口をご利用ください。あなたは一人ではありません。',
+    en: 'Your feelings matter. Socra is a decision-support tool and is not equipped to help with crisis situations. You are not alone.',
+    zh: '您的感受很重要。Socra是一个决策支持工具，无法处理危机情况。您并不孤单。',
+    es: 'Tus sentimientos importan. Socra es una herramienta de apoyo a la toma de decisiones y no está preparada para situaciones de crisis. No estás solo/a.',
   }
 
   const lang = locale && ['ja', 'en', 'zh', 'es'].includes(locale) ? locale : 'en'
 
-  // 全地域の窓口を表示（居住国は特定できないため）
-  const allHelplines = [
-    ...helplines.ja,
-    ...helplines.en,
-    ...helplines.zh,
-    ...helplines.es,
-  ]
-
   return {
     type: 'crisis',
     message: messages[lang],
-    helplines: allHelplines,
+    helplines: helplines.ja, // 主要ユーザー層の窓口のみ直接表示
+    findHelpUrl: 'https://findahelpline.com/',
   }
 }

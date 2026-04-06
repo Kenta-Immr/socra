@@ -363,11 +363,17 @@ export default function Home() {
           {/* エラー */}
           {pipeline.error && (
             <div className="p-4 rounded-xl border text-sm whitespace-pre-line" style={{
-              background: pipeline.error.includes('988') || pipeline.error.includes('0120') ? `${AGENTS.blue.hex}10` : 'rgba(239,68,68,0.1)',
-              borderColor: pipeline.error.includes('988') || pipeline.error.includes('0120') ? AGENTS.blue.hex : 'rgba(239,68,68,0.2)',
-              color: pipeline.error.includes('988') || pipeline.error.includes('0120') ? 'var(--text-primary)' : '#f87171',
+              background: pipeline.error.includes('findahelpline') || pipeline.error.includes('0120') ? `${AGENTS.blue.hex}10` : 'rgba(239,68,68,0.1)',
+              borderColor: pipeline.error.includes('findahelpline') || pipeline.error.includes('0120') ? AGENTS.blue.hex : 'rgba(239,68,68,0.2)',
+              color: pipeline.error.includes('findahelpline') || pipeline.error.includes('0120') ? 'var(--text-primary)' : '#f87171',
             }}>
-              {pipeline.error}
+              {pipeline.error.split('\n').map((line, i) =>
+                line.startsWith('http') ? (
+                  <a key={i} href={line.trim()} target="_blank" rel="noopener noreferrer" className="text-[#3B82F6] underline font-medium">{line.trim()}</a>
+                ) : (
+                  <span key={i}>{line}{'\n'}</span>
+                )
+              )}
             </div>
           )}
 
