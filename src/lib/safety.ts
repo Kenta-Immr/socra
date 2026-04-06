@@ -55,9 +55,17 @@ export function getCrisisResponse(locale?: string): CrisisResponse {
 
   const lang = locale && ['ja', 'en', 'zh', 'es'].includes(locale) ? locale : 'en'
 
+  // 全地域の窓口を表示（居住国は特定できないため）
+  const allHelplines = [
+    ...helplines.ja,
+    ...helplines.en,
+    ...helplines.zh,
+    ...helplines.es,
+  ]
+
   return {
     type: 'crisis',
     message: messages[lang],
-    helplines: helplines[lang],
+    helplines: allHelplines,
   }
 }
