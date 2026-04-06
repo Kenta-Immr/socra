@@ -51,6 +51,9 @@ export default function Home() {
   // マップノード詳細パネル
   const [selectedNode, setSelectedNode] = useState<MindNode | null>(null)
 
+  // モバイルタブ切り替え
+  const [mobileTab, setMobileTab] = useState<'chat' | 'map'>('chat')
+
   useEffect(() => {
     streamEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [pipeline.timeline.length, pipeline.status])
@@ -75,6 +78,8 @@ export default function Home() {
       pipeline.agents.forEach(a => summaryParts.push(`${a.name}(${a.stance}): ${a.reasoning.slice(0, 100)}`))
       setSessionHistory(prev => [...prev, summaryParts.join('\n')])
       setCurrentRound(prev => prev + 1)
+      // モバイル: 完走時にMapタブへ自動切り替え
+      if (window.innerWidth < 768) setMobileTab('map')
     }
   }, [pipeline.status, pipeline.structured, pipeline.synthesis, pipeline.agents])
 
@@ -167,12 +172,12 @@ export default function Home() {
 
   // ── レンダリング ──────────────────────────────
   return (
-    <main className="flex flex-col h-[100dvh]" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
+    <main className="flex flex-col h-[100dvh]" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)', paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       {/* ヘッダー */}
-      <header className="flex items-center justify-between px-6 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
+      <header className="flex items-center justify-between px-4 md:px-6 py-2 md:py-3 border-b" style={{ borderColor: 'var(--border)' }}>
         <div>
-          <h1 className="text-lg font-semibold tracking-tight">Socra</h1>
-          <p className="text-[10px]" style={{ color: 'var(--text-faint)' }}>Think alone. Decide together.</p>
+          <h1 className="text-base md:text-lg font-semibold tracking-tight">Socra</h1>
+          <p className="text-[10px] hidden md:block" style={{ color: 'var(--text-faint)' }}>Think alone. Decide together.</p>
         </div>
         <div className="flex items-center gap-3">
           {pipeline.status === 'running' && pipeline.currentStage && (
@@ -193,11 +198,11 @@ export default function Home() {
         </div>
       </header>
 
-      {/* メインエリア: PC=2ペイン、モバイル=1カラム */}
+      {/* メインエリア: PC=2ペイン、モバイル=タブ切り替え */}
       <div className="flex-1 flex overflow-hidden">
-        {/* 左: チャットストリーム */}
-        <div className="w-full md:w-1/3 md:min-w-[360px] md:max-w-[480px] md:border-r overflow-y-auto" style={{ borderColor: 'var(--border)' }}>
-          <div className="px-4 py-4 space-y-3">
+        {/* 左: チャットストリーム（モバイルではタブで表示/非表示） */}
+        <div className={`${mobileTab === 'chat' ? 'flex' : 'hidden'} md:flex w-full md:w-1/3 md:min-w-[360px] md:max-w-[480px] md:border-r flex-col overflow-y-auto`} style={{ borderColor: 'var(--border)' }}>
+          <div className="px-4 py-4 space-y-3 flex-1">
 
           {/* 初期状態 */}
           {pipeline.status === 'idle' && contextPhase === 'idle' && pipeline.timeline.length === 0 && (
@@ -268,8 +273,8 @@ export default function Home() {
         </div>
       </div>
 
-        {/* 右: マインドマップ（PC専用） */}
-        <div className="hidden md:block flex-1 relative" style={{ background: 'var(--bg-map)' }}>
+        {/* 右: マインドマップ（PC=常時表示、モバイル=Mapタブ時） */}
+        <div className={`${mobileTab === 'map' ? 'flex' : 'hidden'} md:flex flex-1 relative flex-col`} style={{ background: 'var(--bg-map)' }}>
           {(pipeline.status === 'running' || pipeline.status === 'complete') ? (
             <MindMap pipeline={pipeline} fullScreen onNodeClick={setSelectedNode} />
           ) : (
@@ -293,24 +298,24 @@ export default function Home() {
       </div>
 
       {/* 入力（画面下部固定） */}
-      <div className="border-t px-4 md:px-6 py-2 md:py-3" style={{ borderColor: 'var(--border)', background: 'var(--bg-primary)', paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px) + var(--keyboard-offset, 0px))' }}>
+      <div className="border-t px-4 md:px-6 py-2 md:py-3" style={{ borderColor: 'var(--border)', background: 'var(--bg-primary)' }}>
         <form onSubmit={handleSubmit} className="max-w-3xl md:max-w-[480px] flex gap-2">
           <input
             type="text"
             ref={inputRef}
             placeholder={
               contextPhase === 'asking' ? 'Your answer...'
-              : pipeline.status === 'complete' ? 'Ask a follow-up to deepen your thinking...'
+              : pipeline.status === 'complete' ? 'Follow up to deepen thinking...'
               : 'What decision are you facing?'
             }
             disabled={pipeline.status === 'running' || loadingContextQs}
-            className="flex-1 px-4 py-2.5 rounded-xl border text-sm focus:outline-none focus:border-[#3B82F6] transition-colors disabled:opacity-50"
+            className="flex-1 px-3 md:px-4 py-2 md:py-2.5 rounded-xl border text-sm focus:outline-none focus:border-[#3B82F6] transition-colors disabled:opacity-50"
             style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-input)', color: 'var(--text-primary)' }}
           />
           <button
             type="submit"
             disabled={pipeline.status === 'running' || loadingContextQs}
-            className="px-5 py-2.5 rounded-xl bg-[#3B82F6] text-white text-sm font-medium hover:bg-[#2563EB] transition-colors disabled:opacity-30"
+            className="px-4 md:px-5 py-2 md:py-2.5 rounded-xl bg-[#3B82F6] text-white text-sm font-medium hover:bg-[#2563EB] transition-colors disabled:opacity-30"
           >
             {pipeline.status === 'running' ? '...'
               : contextPhase === 'asking' ? 'Answer'
@@ -319,12 +324,33 @@ export default function Home() {
           </button>
           {contextPhase === 'asking' && (
             <button type="button" onClick={handleSkipContext}
-              className="px-3 py-2.5 rounded-xl text-xs hover:bg-[var(--bg-tertiary)]"
+              className="px-3 py-2 rounded-xl text-xs hover:bg-[var(--bg-tertiary)]"
               style={{ color: 'var(--text-dim)' }}>
               Skip
             </button>
           )}
         </form>
+      </div>
+
+      {/* モバイルタブバー（md以上では非表示） */}
+      <div className="md:hidden flex border-t" style={{ borderColor: 'var(--border)', background: 'var(--bg-primary)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+        <button
+          onClick={() => setMobileTab('chat')}
+          className={`flex-1 py-2.5 text-xs font-medium text-center transition-colors ${mobileTab === 'chat' ? 'text-[#3B82F6]' : ''}`}
+          style={{ color: mobileTab === 'chat' ? '#3B82F6' : 'var(--text-dim)', borderTop: mobileTab === 'chat' ? '2px solid #3B82F6' : '2px solid transparent' }}
+        >
+          💬 Chat
+        </button>
+        <button
+          onClick={() => setMobileTab('map')}
+          className={`flex-1 py-2.5 text-xs font-medium text-center transition-colors relative ${mobileTab === 'map' ? 'text-[#3B82F6]' : ''}`}
+          style={{ color: mobileTab === 'map' ? '#3B82F6' : 'var(--text-dim)', borderTop: mobileTab === 'map' ? '2px solid #3B82F6' : '2px solid transparent' }}
+        >
+          🗺️ Map
+          {pipeline.status === 'complete' && mobileTab === 'chat' && (
+            <span className="absolute top-1.5 right-[calc(50%-24px)] w-2 h-2 rounded-full bg-[#3B82F6] animate-pulse" />
+          )}
+        </button>
       </div>
     </main>
   )
@@ -613,10 +639,7 @@ function StreamEntry({ entry, pipeline, expanded, onToggle }: {
           </div>
         )}
 
-        {/* マインドマップ（モバイルのみ — PCは右ペインにフル表示） */}
-        <div className="md:hidden">
-          <MindMap pipeline={pipeline} />
-        </div>
+        {/* マインドマップはモバイルではMapタブで表示 */}
 
         {/* 次の一歩の問いかけ */}
         <div className="mt-4 pt-3 border-t text-center" style={{ borderColor: `${AGENTS.blue.hex}30` }}>
