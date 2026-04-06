@@ -8,6 +8,7 @@ import { useTheme } from '@/hooks/useTheme'
 import dynamic from 'next/dynamic'
 
 const MindMap = dynamic(() => import('@/components/MindMap'), { ssr: false })
+import type { MindNode } from '@/components/MindMap'
 
 // ── 色ヘルパー ───────────────────────────────────────
 function hatColor(hat?: string): string {
@@ -47,9 +48,24 @@ export default function Home() {
   // エージェント詳細の展開状態
   const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set())
 
+  // マップノード詳細パネル
+  const [selectedNode, setSelectedNode] = useState<MindNode | null>(null)
+
   useEffect(() => {
     streamEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [pipeline.timeline.length, pipeline.status])
+
+  // モバイルキーボード表示時に入力欄を見える位置に保つ
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const handleResize = () => {
+      const offset = window.innerHeight - vv.height
+      document.documentElement.style.setProperty('--keyboard-offset', `${offset}px`)
+    }
+    vv.addEventListener('resize', handleResize)
+    return () => vv.removeEventListener('resize', handleResize)
+  }, [])
 
   useEffect(() => {
     if (pipeline.status === 'complete') {
@@ -151,7 +167,7 @@ export default function Home() {
 
   // ── レンダリング ──────────────────────────────
   return (
-    <main className="flex flex-col h-screen" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
+    <main className="flex flex-col h-[100dvh]" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
       {/* ヘッダー */}
       <header className="flex items-center justify-between px-6 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
         <div>
@@ -253,9 +269,9 @@ export default function Home() {
       </div>
 
         {/* 右: マインドマップ（PC専用） */}
-        <div className="hidden md:block flex-1" style={{ background: 'var(--bg-map)' }}>
+        <div className="hidden md:block flex-1 relative" style={{ background: 'var(--bg-map)' }}>
           {(pipeline.status === 'running' || pipeline.status === 'complete') ? (
-            <MindMap pipeline={pipeline} fullScreen />
+            <MindMap pipeline={pipeline} fullScreen onNodeClick={setSelectedNode} />
           ) : (
             <div className="flex items-center justify-center h-full">
               <div className="text-center space-y-2">
@@ -264,11 +280,20 @@ export default function Home() {
               </div>
             </div>
           )}
+
+          {/* ノード詳細パネル */}
+          {selectedNode && (
+            <NodeDetailPanel
+              node={selectedNode}
+              pipeline={pipeline}
+              onClose={() => setSelectedNode(null)}
+            />
+          )}
         </div>
       </div>
 
       {/* 入力（画面下部固定） */}
-      <div className="border-t px-6 py-3" style={{ borderColor: 'var(--border)', background: 'var(--bg-primary)' }}>
+      <div className="border-t px-4 md:px-6 py-2 md:py-3" style={{ borderColor: 'var(--border)', background: 'var(--bg-primary)', paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px) + var(--keyboard-offset, 0px))' }}>
         <form onSubmit={handleSubmit} className="max-w-3xl md:max-w-[480px] flex gap-2">
           <input
             type="text"
@@ -604,4 +629,102 @@ function StreamEntry({ entry, pipeline, expanded, onToggle }: {
   }
 
   return null
+}
+
+// ── ノード詳細パネル（マップ上のフローティング） ────────
+function NodeDetailPanel({ node, pipeline, onClose }: {
+  node: MindNode
+  pipeline: ReturnType<typeof usePipeline>
+  onClose: () => void
+}) {
+  const agent = node.hat ? pipeline.agents.find(a => a.hat === node.hat) : null
+  const agentInfo = node.hat ? AGENTS[node.hat as HatColor | 'verify'] : null
+  const stance = stanceLabel(node.stance)
+
+  return (
+    <div className="absolute top-4 right-4 w-80 max-h-[calc(100%-2rem)] overflow-y-auto rounded-xl border shadow-xl animate-in fade-in slide-in-from-right-2 duration-200 z-50"
+      style={{ background: 'var(--bg-primary)', borderColor: `${node.color}44` }}>
+
+      {/* ヘッダー */}
+      <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b rounded-t-xl" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)' }}>
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: node.color }} />
+          <span className="text-sm font-semibold" style={{ color: node.color }}>
+            {agentInfo?.name ?? (node.type === 'question' || node.type === 'followup' ? 'Question' : node.type === 'synthesis' ? 'Ei' : 'Detail')}
+          </span>
+          {agentInfo && <span className="text-[10px]" style={{ color: 'var(--text-dim)' }}>{agentInfo.label}</span>}
+        </div>
+        <button onClick={onClose} className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-[var(--bg-tertiary)]" style={{ color: 'var(--text-dim)' }}>
+          <span className="text-xs">✕</span>
+        </button>
+      </div>
+
+      <div className="px-4 py-3 space-y-3">
+        {/* スタンス + Intensity */}
+        {node.stance && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium" style={{ color: stance.color }}>{stance.icon} {stance.text}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-tertiary)', color: 'var(--text-dim)' }}>
+              Intensity {node.importance}/5
+            </span>
+          </div>
+        )}
+
+        {/* 全文 */}
+        {node.fullText && (
+          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+            {node.fullText}
+          </p>
+        )}
+
+        {/* キーポイント（エージェントの場合） */}
+        {agent && agent.keyPoints.length > 0 && (
+          <div className="pt-2 border-t space-y-1.5" style={{ borderColor: 'var(--border)' }}>
+            <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-ghost)' }}>Key Points</p>
+            {agent.keyPoints.map((kp, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <span className="w-1 h-1 rounded-full mt-1.5 flex-shrink-0" style={{ backgroundColor: node.color }} />
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{kp}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 統合ノード: nextSteps */}
+        {node.type === 'synthesis' && pipeline.synthesis?.nextSteps && (
+          <div className="pt-2 border-t space-y-1.5" style={{ borderColor: 'var(--border)' }}>
+            <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-ghost)' }}>Next Steps</p>
+            {pipeline.synthesis.nextSteps.map((step, i) => (
+              <p key={i} className="text-xs" style={{ color: 'var(--text-muted)' }}>{step}</p>
+            ))}
+          </div>
+        )}
+
+        {/* 質問ノード: stakeholders, timeHorizon */}
+        {(node.type === 'question' || node.type === 'followup') && pipeline.structured && (
+          <div className="pt-2 border-t space-y-1.5" style={{ borderColor: 'var(--border)' }}>
+            {pipeline.structured.stakeholders.length > 0 && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-ghost)' }}>Stakeholders</p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{pipeline.structured.stakeholders.join(', ')}</p>
+              </div>
+            )}
+            {pipeline.structured.timeHorizon && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-ghost)' }}>Time Horizon</p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{pipeline.structured.timeHorizon}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ラウンド情報 */}
+        {node.round !== undefined && (
+          <div className="pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
+            <p className="text-[10px]" style={{ color: 'var(--text-ghost)' }}>Round {node.round + 1}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }

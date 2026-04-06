@@ -8,16 +8,19 @@ import type { PipelineUI, RoundData } from '@/lib/usePipeline'
 type Props = {
   pipeline: PipelineUI
   fullScreen?: boolean  // 2ペインの右側で使う場合
+  onNodeClick?: (node: MindNode) => void
 }
 
-interface MindNode {
+export interface MindNode {
   id: string
   label: string
   color: string
   type: 'question' | 'agent' | 'synthesis' | 'keypoint' | 'followup'
+  hat?: string
   stance?: string
   round?: number
   importance: number  // 1-5: ノードサイズを決定。5=最大（叡・質問）、1=最小（keypoint）
+  fullText?: string   // 元テキスト全文（詳細表示用）
 }
 
 interface MindEdge {
@@ -34,7 +37,7 @@ function buildMindMapData(pipeline: PipelineUI): { nodes: MindNode[]; edges: Min
   let prevSynthesisId: string | null = null
   pipeline.allRounds.forEach((rd: RoundData) => {
     const qId = `q-r${rd.round}`
-    nodes.push({ id: qId, label: rd.question.slice(0, 30), color: '#3B82F6', type: rd.round === 0 ? 'question' : 'followup', round: rd.round, importance: 4 })
+    nodes.push({ id: qId, label: rd.question.slice(0, 30), color: '#3B82F6', type: rd.round === 0 ? 'question' : 'followup', round: rd.round, importance: 4, fullText: rd.question })
 
     // 前ラウンドの統合ノードから繋ぐ
     if (prevSynthesisId) {
@@ -49,16 +52,18 @@ function buildMindMapData(pipeline: PipelineUI): { nodes: MindNode[]; edges: Min
         label: `${info.name}: ${agent.keyPoints[0]?.slice(0, 20) ?? ''}`,
         color: info.hex,
         type: 'agent',
+        hat: agent.hat,
         stance: agent.stance,
         round: rd.round,
-        importance: agent.intensity,  // エージェントの重要度スコア(1-5)
+        importance: agent.intensity,
+        fullText: agent.reasoning,
       })
       edges.push({ source: qId, target: nodeId, type: 'branch' })
     })
 
     // 過去ラウンドの統合ノード
     const eiId = `ei-r${rd.round}`
-    nodes.push({ id: eiId, label: `叡 R${rd.round + 1}`, color: AGENTS.blue.hex, type: 'synthesis', round: rd.round, importance: 5 })
+    nodes.push({ id: eiId, label: `叡 R${rd.round + 1}`, color: AGENTS.blue.hex, type: 'synthesis', round: rd.round, importance: 5, fullText: '' })
     rd.agents.forEach(agent => {
       edges.push({ source: `a-${agent.hat}-r${rd.round}`, target: eiId, type: 'branch' })
     })
@@ -70,7 +75,7 @@ function buildMindMapData(pipeline: PipelineUI): { nodes: MindNode[]; edges: Min
 
   const currentRound = pipeline.round
   const qId = `q-r${currentRound}`
-  nodes.push({ id: qId, label: pipeline.structured.clarified.slice(0, 30), color: '#3B82F6', type: currentRound === 0 ? 'question' : 'followup', round: currentRound, importance: 5 })
+  nodes.push({ id: qId, label: pipeline.structured.clarified.slice(0, 30), color: '#3B82F6', type: currentRound === 0 ? 'question' : 'followup', round: currentRound, importance: 5, fullText: pipeline.structured.clarified })
 
   if (prevSynthesisId) {
     edges.push({ source: prevSynthesisId, target: qId, type: 'deepens' })
@@ -84,15 +89,17 @@ function buildMindMapData(pipeline: PipelineUI): { nodes: MindNode[]; edges: Min
       label: `${info.name}: ${agent.keyPoints[0]?.slice(0, 25) ?? agent.reasoning.slice(0, 25)}`,
       color: info.hex,
       type: 'agent',
+      hat: agent.hat,
       stance: agent.stance,
       round: currentRound,
-      importance: agent.intensity,  // エージェントの重要度(1-5)でサイズ決定
+      importance: agent.intensity,
+      fullText: agent.reasoning,
     })
     edges.push({ source: qId, target: nodeId, type: 'branch' })
 
     if (agent.keyPoints.length > 1) {
       const kpId = `kp-${agent.hat}-r${currentRound}`
-      nodes.push({ id: kpId, label: agent.keyPoints[1].slice(0, 20), color: info.hex, type: 'keypoint', round: currentRound, importance: 2 })
+      nodes.push({ id: kpId, label: agent.keyPoints[1].slice(0, 20), color: info.hex, type: 'keypoint', hat: agent.hat, round: currentRound, importance: 2, fullText: agent.keyPoints[1] })
       edges.push({ source: nodeId, target: kpId, type: 'branch' })
     }
   })
@@ -112,6 +119,7 @@ function buildMindMapData(pipeline: PipelineUI): { nodes: MindNode[]; edges: Min
       type: 'synthesis',
       round: currentRound,
       importance: 5,
+      fullText: pipeline.synthesis.recommendation,
     })
     pipeline.agents.forEach(agent => {
       edges.push({ source: `a-${agent.hat}-r${currentRound}`, target: eiId, type: 'branch' })
@@ -121,11 +129,17 @@ function buildMindMapData(pipeline: PipelineUI): { nodes: MindNode[]; edges: Min
   return { nodes, edges }
 }
 
-// テキストを折り返す（maxWidth文字で改行）
-function wrapText(text: string, maxChars: number): string[] {
+// テキストを折り返す（maxWidth文字で改行、最大3行で省略）
+function wrapText(text: string, maxChars: number, maxLines = 3): string[] {
   const lines: string[] = []
   for (let i = 0; i < text.length; i += maxChars) {
     lines.push(text.slice(i, i + maxChars))
+    if (lines.length >= maxLines) {
+      if (i + maxChars < text.length) {
+        lines[lines.length - 1] = lines[lines.length - 1].slice(0, maxChars - 1) + '…'
+      }
+      break
+    }
   }
   return lines
 }
@@ -135,9 +149,11 @@ interface SimNode extends d3.SimulationNodeDatum {
   label: string
   color: string
   type: MindNode['type']
+  hat?: string
   stance?: string
   round?: number
   importance: number
+  fullText?: string
   width: number
   height: number
 }
@@ -146,9 +162,11 @@ interface SimEdge extends d3.SimulationLinkDatum<SimNode> {
   type: MindEdge['type']
 }
 
-export default function MindMap({ pipeline, fullScreen }: Props) {
+export default function MindMap({ pipeline, fullScreen, onNodeClick }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
+  const onNodeClickRef = useRef(onNodeClick)
+  onNodeClickRef.current = onNodeClick
 
   useEffect(() => {
     if (!svgRef.current || !containerRef.current || !pipeline.synthesis) return
@@ -217,6 +235,14 @@ export default function MindMap({ pipeline, fullScreen }: Props) {
     const nodeGs = nodeGroup.selectAll('g')
       .data(simNodes)
       .enter().append('g')
+      .style('cursor', 'pointer')
+      .on('click', (_event, d) => {
+        onNodeClickRef.current?.({
+          id: d.id, label: d.label, color: d.color, type: d.type,
+          hat: d.hat, stance: d.stance, round: d.round, importance: d.importance,
+          fullText: d.fullText,
+        })
+      })
       .call(d3.drag<SVGGElement, SimNode>()
         .on('start', (event, d) => {
           if (!event.active) sim.alphaTarget(0.1).restart()
@@ -276,6 +302,29 @@ export default function MindMap({ pipeline, fullScreen }: Props) {
       .attr('fill', d => d.stance === 'support' ? '#22C55E' : d.stance === 'oppose' ? '#EF4444' : '#F59E0B')
       .attr('font-size', '10px')
 
+    // 叡ノードの視覚的強調: グロー + パルス
+    nodeGs.filter(d => d.type === 'synthesis' && !isOld(d))
+      .insert('rect', ':first-child')
+      .attr('rx', 14).attr('ry', 14)
+      .attr('width', d => d.width + 12)
+      .attr('height', d => d.height + 12)
+      .attr('x', d => -(d.width + 12) / 2)
+      .attr('y', d => -(d.height + 12) / 2)
+      .attr('fill', 'none')
+      .attr('stroke', AGENTS.blue.hex)
+      .attr('stroke-width', 1.5)
+      .attr('opacity', 0.4)
+
+    nodeGs.filter(d => d.type === 'synthesis' && !isOld(d))
+      .insert('rect', ':first-child')
+      .attr('rx', 18).attr('ry', 18)
+      .attr('width', d => d.width + 24)
+      .attr('height', d => d.height + 24)
+      .attr('x', d => -(d.width + 24) / 2)
+      .attr('y', d => -(d.height + 24) / 2)
+      .attr('fill', `${AGENTS.blue.hex}08`)
+      .attr('stroke', 'none')
+
     // シミュレーション
     const sim = d3.forceSimulation<SimNode>(simNodes)
       .alphaDecay(0.06)
@@ -328,7 +377,7 @@ export default function MindMap({ pipeline, fullScreen }: Props) {
   return (
     <div
       ref={containerRef}
-      className={fullScreen ? 'w-full h-full' : 'mt-4 rounded-xl border overflow-hidden'}
+      className={fullScreen ? 'relative w-full h-full' : 'relative mt-4 rounded-xl border overflow-hidden'}
       style={fullScreen ? { background: 'var(--bg-map)' } : { borderColor: 'var(--border-light)', background: 'var(--bg-secondary)' }}
     >
       {!fullScreen && (
@@ -337,6 +386,17 @@ export default function MindMap({ pipeline, fullScreen }: Props) {
         </div>
       )}
       <svg ref={svgRef} className="w-full" style={{ minHeight: fullScreen ? '100%' : '420px', background: fullScreen ? 'var(--bg-map-gradient)' : 'transparent' }} />
+
+      {/* 凡例 */}
+      {pipeline.synthesis && (
+        <div className="absolute bottom-3 right-3 px-3 py-2 rounded-lg border text-[10px] space-y-1" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-light)', color: 'var(--text-dim)' }}>
+          <div className="flex items-center gap-2"><span style={{ color: '#22C55E' }}>▲</span> Support</div>
+          <div className="flex items-center gap-2"><span style={{ color: '#F59E0B' }}>◆</span> Caution</div>
+          <div className="flex items-center gap-2"><span style={{ color: '#EF4444' }}>▼</span> Oppose</div>
+          <div className="flex items-center gap-2"><span className="inline-block w-4 border-t-2 border-dashed" style={{ borderColor: '#EF4444' }} /> Contradiction</div>
+          <div className="flex items-center gap-2"><span className="inline-block w-4 border-t-2 border-dashed" style={{ borderColor: '#3B82F6' }} /> Deepens</div>
+        </div>
+      )}
     </div>
   )
 }
