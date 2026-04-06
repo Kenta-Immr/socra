@@ -5,12 +5,13 @@ import { usePipeline, type TimelineEntry } from '@/lib/usePipeline'
 import { AGENTS } from '@/types'
 import type { HatColor } from '@/types'
 import { useTheme } from '@/hooks/useTheme'
-import { t, LOCALE_FLAGS, LOCALE_LABELS, type Locale } from '@/i18n/locales'
+import { t, type Locale } from '@/i18n/locales'
 import { saveSession, updateSession } from '@/lib/supabase'
 import dynamic from 'next/dynamic'
 
 const MindMap = dynamic(() => import('@/components/MindMap'), { ssr: false })
 import type { MindNode } from '@/components/MindMap'
+import SessionSidebar from '@/components/SessionSidebar'
 
 // ── 色ヘルパー ───────────────────────────────────────
 function hatColor(hat?: string): string {
@@ -57,6 +58,9 @@ export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
 
+  // サイドバー
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
   // モバイルタブ切り替え
   const [mobileTab, setMobileTab] = useState<'chat' | 'map'>('chat')
 
@@ -68,7 +72,6 @@ export default function Home() {
     }
     return 'en'
   })
-  const [showLangMenu, setShowLangMenu] = useState(false)
   const msg = t(locale)
 
   useEffect(() => {
@@ -114,6 +117,10 @@ export default function Home() {
           if (id) {
             setSessionId(id)
             setShareUrl(`${window.location.origin}/session/${id}`)
+            // localStorageにセッション一覧を保存
+            const saved = JSON.parse(localStorage.getItem('socra-sessions') ?? '[]')
+            saved.unshift({ id, question: pipeline.structured?.original ?? '', date: new Date().toISOString() })
+            localStorage.setItem('socra-sessions', JSON.stringify(saved.slice(0, 50)))
           }
         })
       } else {
@@ -216,11 +223,26 @@ export default function Home() {
   // ── レンダリング ──────────────────────────────
   return (
     <main className="flex flex-col h-[100dvh]" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)', paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+      {/* サイドバー */}
+      <SessionSidebar
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        onSelectSession={(id) => { window.location.href = `/session/${id}` }}
+        onNewSession={() => { window.location.href = '/' }}
+        locale={locale}
+        onLocaleChange={setLocale}
+      />
+
       {/* ヘッダー */}
       <header className="flex items-center justify-between px-4 md:px-6 py-2 md:py-3 border-b" style={{ borderColor: 'var(--border)' }}>
-        <div>
-          <h1 className="text-base md:text-lg font-semibold tracking-tight">Socra</h1>
-          <p className="text-[10px] hidden md:block" style={{ color: 'var(--text-faint)' }}>{msg.tagline}</p>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setSidebarOpen(true)} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-[var(--bg-tertiary)]" style={{ color: 'var(--text-muted)' }}>
+            <span className="text-base">☰</span>
+          </button>
+          <div>
+            <h1 className="text-base md:text-lg font-semibold tracking-tight">Socra</h1>
+            <p className="text-[10px] hidden md:block" style={{ color: 'var(--text-faint)' }}>{msg.tagline}</p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           {pipeline.status === 'running' && pipeline.currentStage && (
@@ -235,23 +257,6 @@ export default function Home() {
               </span>
             </div>
           )}
-          <div className="relative">
-            <button onClick={() => setShowLangMenu(!showLangMenu)} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-[var(--bg-tertiary)]" title="Language">
-              <span className="text-sm">{LOCALE_FLAGS[locale]}</span>
-            </button>
-            {showLangMenu && (
-              <div className="absolute right-0 top-9 z-50 rounded-lg border shadow-lg py-1 min-w-[120px]" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)' }}>
-                {(['en', 'ja', 'zh', 'es'] as const).map(loc => (
-                  <button key={loc} onClick={() => { setLocale(loc); setShowLangMenu(false) }}
-                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--bg-tertiary)] flex items-center gap-2 ${locale === loc ? 'font-bold' : ''}`}
-                    style={{ color: 'var(--text-primary)' }}>
-                    <span>{LOCALE_FLAGS[loc]}</span>
-                    <span>{LOCALE_LABELS[loc]}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
           <button onClick={toggleTheme} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-[var(--bg-tertiary)]">
             <span className="text-sm">{theme === 'dark' ? '☀' : '☽'}</span>
           </button>
