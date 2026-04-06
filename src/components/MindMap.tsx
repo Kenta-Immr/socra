@@ -112,9 +112,11 @@ function buildMindMapData(pipeline: PipelineUI): { nodes: MindNode[]; edges: Min
 
   if (pipeline.synthesis) {
     const eiId = `ei-r${currentRound}`
+    // 叡ノード: 最初の1文を長めに表示（原則1: 結論は1文）
+    const firstSentence = pipeline.synthesis.recommendation.split('\n').filter(l => l.trim())[0] ?? ''
     nodes.push({
       id: eiId,
-      label: `叡: ${pipeline.synthesis.recommendation.split('\n')[0]?.slice(0, 30) ?? ''}`,
+      label: `叡: ${firstSentence.slice(0, 60)}${firstSentence.length > 60 ? '…' : ''}`,
       color: AGENTS.blue.hex,
       type: 'synthesis',
       round: currentRound,
@@ -176,6 +178,7 @@ export default function MindMap({ pipeline, fullScreen, onNodeClick }: Props) {
 
     const width = container.clientWidth
     const height = fullScreen ? container.clientHeight : 420
+    const isMobile = width < 768
 
     const { nodes: rawNodes, edges: rawEdges } = buildMindMapData(pipeline)
     if (rawNodes.length === 0) return
@@ -185,12 +188,21 @@ export default function MindMap({ pipeline, fullScreen, onNodeClick }: Props) {
     const textColor = isDark ? '#e5e5e5' : '#1a1a1a'
     const mutedColor = isDark ? '#999' : '#555'
     const lineColor = isDark ? '#556' : '#bbb'
+    const roundLabelColor = isDark ? '#666' : '#aaa'
 
     // ノードサイズを重要度(importance)基準で計算
-    const maxChars = 15
     const currentRound = pipeline.round
+    const totalRounds = currentRound + 1
+
+    // ── 階層型レイアウト定数（原則3: 探索パスは下向きに一本通る） ──
+    const ROUND_HEIGHT = 280
+    const LAYER_Q = -100
+    const LAYER_AGENT = 0
+    const LAYER_EI = 100
     const simNodes: SimNode[] = rawNodes.map(n => {
-      const lines = wrapText(n.label, maxChars)
+      // 叡ノードは広い幅で表示（原則1: 結論は1文をしっかり見せる）
+      const maxChars = n.type === 'synthesis' ? 25 : 15
+      const lines = wrapText(n.label, maxChars, n.type === 'synthesis' ? 4 : 3)
       // importance(1-5)でサイズを決定。叡ノードは1.5倍（太陽化）
       const isSynthesis = n.type === 'synthesis'
       const scale = isSynthesis ? 1.5 : (0.6 + (n.importance / 5) * 0.6)
@@ -225,7 +237,14 @@ export default function MindMap({ pipeline, fullScreen, onNodeClick }: Props) {
       .scaleExtent([0.3, 3])
       .on('zoom', (event) => { g.attr('transform', event.transform) })
     svg.call(zoom)
-    svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(fullScreen ? 0.7 : 0.85))
+    // ラウンド数に応じた初期ズーム（全体が見えるように）
+    const totalHeight = totalRounds * ROUND_HEIGHT + 100
+    const fitScale = Math.min(
+      fullScreen ? Math.min(height / totalHeight, 0.85) : 0.85,
+      isMobile ? 0.55 : 0.8
+    )
+    const initialY = height / 2 - (totalRounds > 1 ? (totalRounds - 1) * ROUND_HEIGHT * fitScale / 2 : 0)
+    svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, initialY).scale(fitScale))
 
     // エッジ
     const linkGroup = g.append('g')
@@ -283,7 +302,8 @@ export default function MindMap({ pipeline, fullScreen, onNodeClick }: Props) {
     // テキスト（折り返し対応）
     nodeGs.each(function (d) {
       const g = d3.select(this)
-      const lines = wrapText(d.label, maxChars)
+      const charWidth = d.type === 'synthesis' ? 25 : 15
+      const lines = wrapText(d.label, charWidth, d.type === 'synthesis' ? 4 : 3)
       const lineHeight = 14
       const startY = -(lines.length - 1) * lineHeight / 2
 
@@ -339,27 +359,53 @@ export default function MindMap({ pipeline, fullScreen, onNodeClick }: Props) {
       .select('rect')
       .style('filter', 'url(#node-glow)')
 
-    // シミュレーション
+    function getTargetY(d: SimNode): number {
+      const roundOffset = (d.round ?? 0) * ROUND_HEIGHT
+      if (d.type === 'question' || d.type === 'followup') return roundOffset + LAYER_Q
+      if (d.type === 'synthesis') return roundOffset + LAYER_EI
+      if (d.type === 'keypoint') return roundOffset + LAYER_AGENT + 40
+      return roundOffset + LAYER_AGENT
+    }
+
+    // ラウンド区切りラベル（Round 1, Round 2...）
+    const roundLabelGroup = g.append('g').attr('class', 'round-labels')
+    for (let r = 0; r < totalRounds; r++) {
+      const y = r * ROUND_HEIGHT + LAYER_Q - 30
+      if (r > 0) {
+        // 区切り線
+        roundLabelGroup.append('line')
+          .attr('x1', -400).attr('x2', 400)
+          .attr('y1', y - 10).attr('y2', y - 10)
+          .attr('stroke', roundLabelColor)
+          .attr('stroke-width', 0.5)
+          .attr('stroke-dasharray', '6,4')
+          .attr('opacity', 0.6)
+      }
+      roundLabelGroup.append('text')
+        .text(`Round ${r + 1}`)
+        .attr('x', -380).attr('y', y)
+        .attr('fill', roundLabelColor)
+        .attr('font-size', '10px')
+        .attr('font-weight', '500')
+        .attr('opacity', 0.7)
+    }
+
+    // シミュレーション（強い階層制約）
     const sim = d3.forceSimulation<SimNode>(simNodes)
       .alphaDecay(0.06)
       .velocityDecay(0.45)
       .force('link', d3.forceLink<SimNode, SimEdge>(simEdges)
         .id(d => d.id)
-        .distance(d => d.type === 'contradict' ? 200 : 100)
-        .strength(0.4)
+        .distance(d => d.type === 'contradict' ? 180 : d.type === 'deepens' ? ROUND_HEIGHT * 0.7 : 80)
+        .strength(0.3)
       )
-      .force('charge', d3.forceManyBody().strength(-500))
+      .force('charge', d3.forceManyBody().strength(-400))
       .force('collide', d3.forceCollide<SimNode>()
-        .radius(d => Math.max(d.width, d.height) / 2 + 15)
+        .radius(d => Math.max(d.width, d.height) / 2 + 12)
         .strength(1)
       )
-      .force('center', d3.forceCenter(0, 0).strength(0.05))
-      .force('y', d3.forceY<SimNode>(d => {
-        if (d.type === 'question') return -80
-        if (d.type === 'synthesis') return 120
-        if (d.type === 'agent') return 0
-        return 60
-      }).strength(0.1))
+      .force('x', d3.forceX(0).strength(0.03))
+      .force('y', d3.forceY<SimNode>(d => getTargetY(d)).strength(0.4))
       .on('tick', () => {
         links
           .attr('x1', d => (d as unknown as { source: SimNode }).source.x ?? 0)
@@ -400,6 +446,24 @@ export default function MindMap({ pipeline, fullScreen, onNodeClick }: Props) {
         </div>
       )}
       <svg ref={svgRef} className="w-full map-dots" style={{ minHeight: fullScreen ? '100%' : '420px', background: fullScreen ? 'var(--bg-map-gradient)' : 'transparent' }} />
+
+      {/* 到達サマリー（凛の提案: あなたが今回到達したこと） */}
+      {pipeline.synthesis && pipeline.status === 'complete' && (
+        <div className="absolute top-3 left-3 right-3 md:left-auto md:right-3 md:max-w-sm px-4 py-3 rounded-xl border shadow-lg" style={{ background: 'var(--bg-primary)', borderColor: `${AGENTS.blue.hex}44`, zIndex: 40 }}>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: AGENTS.blue.hex }} />
+            <span className="text-[10px] uppercase tracking-wider font-medium" style={{ color: AGENTS.blue.hex }}>Your Journey</span>
+          </div>
+          <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+            {pipeline.synthesis.recommendation.split('\n').filter(l => l.trim())[0] ?? ''}
+          </p>
+          {pipeline.allRounds.length > 0 && (
+            <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-ghost)' }}>
+              {pipeline.allRounds.length + 1} rounds of exploration
+            </p>
+          )}
+        </div>
+      )}
 
       {/* 凡例 */}
       {pipeline.synthesis && (
