@@ -113,6 +113,7 @@ export interface SynthesisResult {
   model: 'claude'
   recommendation: string
   sessionTitle?: string    // 叡が生成するセッションタイトル（問いの本質）
+  dominantAgents: HatColor[]  // 議論で最も影響が大きかったエージェント（intensity上位2体）
   riskNodes: RiskNode[]
   nextSteps: string[]
   decisionMap: DecisionMapData

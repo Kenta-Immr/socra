@@ -372,6 +372,7 @@ export function usePipeline() {
         model: 'claude' as const,
         recommendation: lastRound.synthesis.recommendation,
         nextSteps: lastRound.synthesis.nextSteps,
+        dominantAgents: [],
         riskNodes: [],
         decisionMap: { nodes: [], edges: [] },
         radarChart: { axes: [], pattern: 'Balanced' },

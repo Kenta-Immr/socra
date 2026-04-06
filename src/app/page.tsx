@@ -9,7 +9,8 @@ import { t, type Locale } from '@/i18n/locales'
 import { saveSession, updateSession } from '@/lib/supabase'
 import dynamic from 'next/dynamic'
 
-const MindMap = dynamic(() => import('@/components/MindMap'), { ssr: false })
+// const MindMap = dynamic(() => import('@/components/MindMap'), { ssr: false })  // fallback preserved
+const SandironField = dynamic(() => import('@/components/SandironField'), { ssr: false })
 import type { MindNode } from '@/components/MindMap'
 import SessionSidebar from '@/components/SessionSidebar'
 
@@ -474,7 +475,11 @@ export default function Home() {
         {/* 右: マインドマップ（PC=常時表示、モバイル=Mapタブ時） */}
         <div className={`${mobileTab === 'map' ? 'flex' : 'hidden'} md:flex flex-1 relative flex-col`} style={{ background: 'var(--bg-map)' }}>
           {(pipeline.status === 'running' || pipeline.status === 'complete') ? (
-            <MindMap pipeline={pipeline} fullScreen onNodeClick={setSelectedNode} />
+            <SandironField pipeline={pipeline} fullScreen onNodeClick={(node) => setSelectedNode({
+              id: node.id, label: `${node.kanji} ${node.agentName}`, color: '#3B82F6',
+              type: 'agent', hat: node.hat, stance: node.stance, round: node.round,
+              importance: node.intensity, fullText: node.reasoning,
+            })} />
           ) : (
             <div className="flex items-center justify-center h-full">
               <div className="text-center space-y-3">

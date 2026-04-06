@@ -244,11 +244,18 @@ function parseSynthesis(text: string, agents: AgentResponse[]): SynthesisResult 
     ? text.replace(/\n*(?:Your question was really about|あなたの問いの本質は)[:\s]*.+/i, '').trim()
     : text
 
+  // 議論で最も影響が大きかったエージェント（intensity上位2体）
+  const dominantAgents = [...agents]
+    .sort((a, b) => b.intensity - a.intensity)
+    .slice(0, 2)
+    .map(a => a.hat)
+
   return {
     hat: 'blue',
     model: 'claude',
     recommendation: cleanedText,
     sessionTitle,
+    dominantAgents,
     riskNodes,
     nextSteps,
     decisionMap: {
