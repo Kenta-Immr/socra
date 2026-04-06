@@ -206,8 +206,8 @@ export default function Home() {
 
           {/* 初期状態 */}
           {pipeline.status === 'idle' && contextPhase === 'idle' && pipeline.timeline.length === 0 && (
-            <div className="text-center py-20 space-y-4">
-              <div className="text-4xl font-bold tracking-tighter bg-gradient-to-b from-[var(--text-primary)] to-[var(--text-faint)] bg-clip-text text-transparent">
+            <div className="text-center py-10 md:py-20 space-y-4">
+              <div className="text-3xl md:text-4xl font-bold tracking-tighter bg-gradient-to-b from-[var(--text-primary)] to-[var(--text-faint)] bg-clip-text text-transparent">
                 Socra
               </div>
               <p className="text-sm" style={{ color: 'var(--text-faint)' }}>7 perspectives. One clear path.</p>
@@ -221,6 +221,30 @@ export default function Home() {
                     </div>
                   )
                 })}
+              </div>
+
+              {/* デモシナリオボタン */}
+              <div className="pt-6 space-y-2 max-w-sm mx-auto">
+                <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-ghost)' }}>Try a scenario</p>
+                {[
+                  { icon: '💼', text: 'Should I leave my stable job to start a business?' },
+                  { icon: '🏭', text: 'Should we invest in AI automation for our factory?' },
+                  { icon: '🚀', text: 'Launch now with basic features or wait for the full version?' },
+                ].map((scenario, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      if (inputRef.current) {
+                        inputRef.current.value = scenario.text
+                        inputRef.current.focus()
+                      }
+                    }}
+                    className="w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors hover:border-[#3B82F6]/50"
+                    style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-light)', color: 'var(--text-secondary)' }}
+                  >
+                    <span className="mr-2">{scenario.icon}</span>{scenario.text}
+                  </button>
+                ))}
               </div>
             </div>
           )}
@@ -279,9 +303,10 @@ export default function Home() {
             <MindMap pipeline={pipeline} fullScreen onNodeClick={setSelectedNode} />
           ) : (
             <div className="flex items-center justify-center h-full">
-              <div className="text-center space-y-2">
+              <div className="text-center space-y-3">
                 <div className="text-3xl font-bold tracking-tighter bg-gradient-to-b from-[var(--text-primary)] to-[var(--text-faint)] bg-clip-text text-transparent">Socra</div>
                 <p className="text-xs" style={{ color: 'var(--text-ghost)' }}>Your thinking, visualized</p>
+                <p className="text-[10px] mt-4" style={{ color: 'var(--text-ghost)' }}>Ask a question or pick a scenario to begin</p>
               </div>
             </div>
           )}
