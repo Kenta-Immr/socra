@@ -225,9 +225,9 @@ export default function Home() {
             </div>
           )}
 
-          {/* 文脈質問 */}
+          {/* 文脈質問（PC用 — モバイルでは入力欄直上に表示） */}
           {contextPhase === 'asking' && !loadingContextQs && contextQuestions.length > 0 && (
-            <div className="p-4 rounded-xl border" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-light)' }}>
+            <div className="hidden md:block p-4 rounded-xl border" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-light)' }}>
               <div className="flex items-center gap-2 mb-2">
                 <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: AGENTS.blue.hex }} />
                 <span className="text-xs font-medium" style={{ color: AGENTS.blue.hex }}>Ei asks ({currentContextQ + 1}/{contextQuestions.length})</span>
@@ -245,7 +245,7 @@ export default function Home() {
             </div>
           )}
           {loadingContextQs && (
-            <div className="flex items-center gap-2 p-4 rounded-xl" style={{ background: 'var(--bg-secondary)' }}>
+            <div className="hidden md:flex items-center gap-2 p-4 rounded-xl" style={{ background: 'var(--bg-secondary)' }}>
               <span className="w-2 h-2 rounded-full bg-[#3B82F6] animate-pulse" />
               <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Ei is preparing questions...</span>
             </div>
@@ -297,8 +297,24 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 入力（画面下部固定） */}
+      {/* 入力エリア（画面下部固定） */}
       <div className="border-t px-4 md:px-6 py-2 md:py-3" style={{ borderColor: 'var(--border)', background: 'var(--bg-primary)' }}>
+        {/* 文脈質問を入力欄の直上に表示（キーボード表示時も質問が見える） */}
+        {contextPhase === 'asking' && !loadingContextQs && contextQuestions.length > 0 && (
+          <div className="mb-2 p-3 rounded-lg border max-w-3xl md:max-w-[480px]" style={{ background: 'var(--bg-secondary)', borderColor: `${AGENTS.blue.hex}33` }}>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: AGENTS.blue.hex }} />
+              <span className="text-[10px] font-medium" style={{ color: AGENTS.blue.hex }}>Ei asks ({currentContextQ + 1}/{contextQuestions.length})</span>
+            </div>
+            <p className="text-sm leading-snug" style={{ color: 'var(--text-primary)' }}>{contextQuestions[currentContextQ]}</p>
+          </div>
+        )}
+        {loadingContextQs && (
+          <div className="mb-2 flex items-center gap-2 p-3 rounded-lg max-w-3xl md:max-w-[480px]" style={{ background: 'var(--bg-secondary)' }}>
+            <span className="w-2 h-2 rounded-full bg-[#3B82F6] animate-pulse" />
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Ei is preparing questions...</span>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="max-w-3xl md:max-w-[480px] flex gap-2">
           <input
             type="text"
