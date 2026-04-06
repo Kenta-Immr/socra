@@ -148,10 +148,18 @@ export default function Home() {
       const res = await fetch('/api/context-questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q }),
+        body: JSON.stringify({ question: q, locale }),
       })
       if (!res.ok) throw new Error(`API error: ${res.status}`)
       const data = await res.json()
+      // セーフティフィルター: 危機的状況検出
+      if (data.type === 'crisis') {
+        setContextPhase('done')
+        setLoadingContextQs(false)
+        const helplines = data.helplines.map((h: { name: string; number: string }) => `${h.name}: ${h.number}`).join('\n')
+        pipeline.setError(`${data.message}\n\n${helplines}`)
+        return
+      }
       const questions = data.questions ?? []
       if (questions.length === 0 || data.error) {
         setContextPhase('done')
@@ -354,7 +362,11 @@ export default function Home() {
 
           {/* エラー */}
           {pipeline.error && (
-            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+            <div className="p-4 rounded-xl border text-sm whitespace-pre-line" style={{
+              background: pipeline.error.includes('988') || pipeline.error.includes('0120') ? `${AGENTS.blue.hex}10` : 'rgba(239,68,68,0.1)',
+              borderColor: pipeline.error.includes('988') || pipeline.error.includes('0120') ? AGENTS.blue.hex : 'rgba(239,68,68,0.2)',
+              color: pipeline.error.includes('988') || pipeline.error.includes('0120') ? 'var(--text-primary)' : '#f87171',
+            }}>
               {pipeline.error}
             </div>
           )}

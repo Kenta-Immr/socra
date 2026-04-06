@@ -113,6 +113,23 @@ export function usePipeline() {
         body: JSON.stringify({ question, context }),
       })
 
+      // セーフティフィルター: 危機的状況検出時はJSONレスポンスが返る
+      const contentType = res.headers.get('content-type') ?? ''
+      if (contentType.includes('application/json')) {
+        const crisisData = await res.json()
+        if (crisisData.type === 'crisis') {
+          const helplineText = crisisData.helplines
+            .map((h: { name: string; number: string }) => `${h.name}: ${h.number}`)
+            .join('\n')
+          setState(prev => ({
+            ...prev,
+            status: 'error',
+            error: `${crisisData.message}\n\n${helplineText}`,
+          }))
+          return
+        }
+      }
+
       const reader = res.body?.getReader()
       if (!reader) throw new Error('No stream')
 
@@ -231,5 +248,9 @@ export function usePipeline() {
     }
   }, [addTimeline])
 
-  return { ...state, run }
+  const setError = useCallback((error: string) => {
+    setState(prev => ({ ...prev, status: 'error', error }))
+  }, [])
+
+  return { ...state, run, setError }
 }

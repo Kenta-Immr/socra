@@ -2,12 +2,18 @@
 import { generateObject } from 'ai'
 import { z } from 'zod'
 import { anthropic } from '@ai-sdk/anthropic'
+import { detectCrisis, getCrisisResponse } from '@/lib/safety'
 
 export async function POST(req: Request) {
-  const { question } = await req.json()
+  const { question, locale } = await req.json()
 
   if (!question || typeof question !== 'string') {
     return Response.json({ error: 'question is required' }, { status: 400 })
+  }
+
+  // セーフティフィルター
+  if (detectCrisis(question)) {
+    return Response.json(getCrisisResponse(locale))
   }
 
   try {

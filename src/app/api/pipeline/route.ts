@@ -1,16 +1,25 @@
 // Socra パイプライン SSE エンドポイント
 // 5段パイプラインを順次実行し、各ステージの結果をSSEでストリーミング
 import { runStructure, runObserve, runDeliberate, runVerify, runSynthesize, runRouting } from '@/lib/pipeline/engine'
+import { detectCrisis, getCrisisResponse } from '@/lib/safety'
 import type { SSEEvent } from '@/types'
 
 export const maxDuration = 300  // Vercel Pro: 最大300秒。Web検索込みで余裕を持つ
 
 export async function POST(req: Request) {
-  const { question, context } = await req.json()
+  const { question, context, locale } = await req.json()
 
   if (!question || typeof question !== 'string') {
     return new Response(JSON.stringify({ error: 'question is required' }), {
       status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  // セーフティフィルター: 危機的状況を検出した場合、パイプラインを停止し専門機関に接続
+  if (detectCrisis(question) || (context && detectCrisis(context))) {
+    return new Response(JSON.stringify(getCrisisResponse(locale)), {
+      status: 200,
       headers: { 'Content-Type': 'application/json' },
     })
   }
