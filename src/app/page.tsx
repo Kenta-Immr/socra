@@ -5,6 +5,7 @@ import { usePipeline, type TimelineEntry } from '@/lib/usePipeline'
 import { AGENTS } from '@/types'
 import type { HatColor } from '@/types'
 import { useTheme } from '@/hooks/useTheme'
+import { t, LOCALE_FLAGS, LOCALE_LABELS, type Locale } from '@/i18n/locales'
 import dynamic from 'next/dynamic'
 
 const MindMap = dynamic(() => import('@/components/MindMap'), { ssr: false })
@@ -53,6 +54,21 @@ export default function Home() {
 
   // モバイルタブ切り替え
   const [mobileTab, setMobileTab] = useState<'chat' | 'map'>('chat')
+
+  // 多言語
+  const [locale, setLocale] = useState<Locale>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('socra-locale') as Locale
+      if (saved && ['en', 'ja', 'zh', 'es'].includes(saved)) return saved
+    }
+    return 'en'
+  })
+  const [showLangMenu, setShowLangMenu] = useState(false)
+  const msg = t(locale)
+
+  useEffect(() => {
+    localStorage.setItem('socra-locale', locale)
+  }, [locale])
 
   useEffect(() => {
     streamEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -177,21 +193,38 @@ export default function Home() {
       <header className="flex items-center justify-between px-4 md:px-6 py-2 md:py-3 border-b" style={{ borderColor: 'var(--border)' }}>
         <div>
           <h1 className="text-base md:text-lg font-semibold tracking-tight">Socra</h1>
-          <p className="text-[10px] hidden md:block" style={{ color: 'var(--text-faint)' }}>Think alone. Decide together.</p>
+          <p className="text-[10px] hidden md:block" style={{ color: 'var(--text-faint)' }}>{msg.tagline}</p>
         </div>
         <div className="flex items-center gap-3">
           {pipeline.status === 'running' && pipeline.currentStage && (
             <div className="flex items-center gap-2 px-3 py-1 rounded-full" style={{ background: 'var(--bg-tertiary)' }}>
               <span className="w-2 h-2 rounded-full bg-[#3B82F6] animate-pulse" />
               <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                {pipeline.currentStage === 'structure' ? 'Clarifying your question...'
-                  : pipeline.currentStage === 'observe' ? '🔍 Mei — Gathering real-world facts'
-                  : pipeline.currentStage === 'deliberate' ? 'Team debating your question...'
-                  : pipeline.currentStage === 'verify' ? '⚡ Ri — Checking contradictions'
-                  : '🔮 Ei — Weaving all perspectives'}
+                {pipeline.currentStage === 'structure' ? msg.stageStructure
+                  : pipeline.currentStage === 'observe' ? msg.stageObserve
+                  : pipeline.currentStage === 'deliberate' ? msg.stageDeliberate
+                  : pipeline.currentStage === 'verify' ? msg.stageVerify
+                  : msg.stageSynthesize}
               </span>
             </div>
           )}
+          <div className="relative">
+            <button onClick={() => setShowLangMenu(!showLangMenu)} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-[var(--bg-tertiary)]" title="Language">
+              <span className="text-sm">{LOCALE_FLAGS[locale]}</span>
+            </button>
+            {showLangMenu && (
+              <div className="absolute right-0 top-9 z-50 rounded-lg border shadow-lg py-1 min-w-[120px]" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)' }}>
+                {(['en', 'ja', 'zh', 'es'] as const).map(loc => (
+                  <button key={loc} onClick={() => { setLocale(loc); setShowLangMenu(false) }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--bg-tertiary)] flex items-center gap-2 ${locale === loc ? 'font-bold' : ''}`}
+                    style={{ color: 'var(--text-primary)' }}>
+                    <span>{LOCALE_FLAGS[loc]}</span>
+                    <span>{LOCALE_LABELS[loc]}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button onClick={toggleTheme} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-[var(--bg-tertiary)]">
             <span className="text-sm">{theme === 'dark' ? '☀' : '☽'}</span>
           </button>
@@ -210,7 +243,7 @@ export default function Home() {
               <div className="text-3xl md:text-4xl font-bold tracking-tighter bg-gradient-to-b from-[var(--text-primary)] to-[var(--text-faint)] bg-clip-text text-transparent">
                 Socra
               </div>
-              <p className="text-sm" style={{ color: 'var(--text-faint)' }}>7 perspectives. One clear path.</p>
+              <p className="text-sm" style={{ color: 'var(--text-faint)' }}>{msg.subtitle}</p>
               <div className="flex flex-wrap justify-center gap-2 mt-4">
                 {(['white', 'red', 'black', 'yellow', 'green', 'verify', 'blue'] as const).map(key => {
                   const agent = AGENTS[key]
@@ -225,11 +258,11 @@ export default function Home() {
 
               {/* デモシナリオボタン */}
               <div className="pt-6 space-y-2 max-w-sm mx-auto">
-                <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-ghost)' }}>Try a scenario</p>
+                <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-ghost)' }}>{msg.tryScenario}</p>
                 {[
-                  { icon: '💼', text: 'Should I leave my stable job to start a business?' },
-                  { icon: '🏭', text: 'Should we invest in AI automation for our factory?' },
-                  { icon: '🚀', text: 'Launch now with basic features or wait for the full version?' },
+                  { icon: '💼', text: msg.scenario1 },
+                  { icon: '🏭', text: msg.scenario2 },
+                  { icon: '🚀', text: msg.scenario3 },
                 ].map((scenario, i) => (
                   <button
                     key={i}
@@ -271,7 +304,7 @@ export default function Home() {
           {loadingContextQs && (
             <div className="hidden md:flex items-center gap-2 p-4 rounded-xl" style={{ background: 'var(--bg-secondary)' }}>
               <span className="w-2 h-2 rounded-full bg-[#3B82F6] animate-pulse" />
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Ei is preparing questions...</span>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{msg.eiPreparing}</span>
             </div>
           )}
 
@@ -283,6 +316,7 @@ export default function Home() {
               pipeline={pipeline}
               expanded={expandedEntries.has(entry.id)}
               onToggle={() => toggleExpand(entry.id)}
+              locale={locale}
             />
           ))}
 
@@ -305,8 +339,8 @@ export default function Home() {
             <div className="flex items-center justify-center h-full">
               <div className="text-center space-y-3">
                 <div className="text-3xl font-bold tracking-tighter bg-gradient-to-b from-[var(--text-primary)] to-[var(--text-faint)] bg-clip-text text-transparent">Socra</div>
-                <p className="text-xs" style={{ color: 'var(--text-ghost)' }}>Your thinking, visualized</p>
-                <p className="text-[10px] mt-4" style={{ color: 'var(--text-ghost)' }}>Ask a question or pick a scenario to begin</p>
+                <p className="text-xs" style={{ color: 'var(--text-ghost)' }}>{msg.mapPlaceholder}</p>
+                <p className="text-[10px] mt-4" style={{ color: 'var(--text-ghost)' }}>{msg.mapHint}</p>
               </div>
             </div>
           )}
@@ -329,7 +363,7 @@ export default function Home() {
           <div className="mb-2 p-3 rounded-lg border max-w-3xl md:max-w-[480px]" style={{ background: 'var(--bg-secondary)', borderColor: `${AGENTS.blue.hex}33` }}>
             <div className="flex items-center gap-2 mb-1">
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: AGENTS.blue.hex }} />
-              <span className="text-[10px] font-medium" style={{ color: AGENTS.blue.hex }}>Ei asks ({currentContextQ + 1}/{contextQuestions.length})</span>
+              <span className="text-[10px] font-medium" style={{ color: AGENTS.blue.hex }}>{msg.eiAsks} ({currentContextQ + 1}/{contextQuestions.length})</span>
             </div>
             <p className="text-sm leading-snug" style={{ color: 'var(--text-primary)' }}>{contextQuestions[currentContextQ]}</p>
           </div>
@@ -337,7 +371,7 @@ export default function Home() {
         {loadingContextQs && (
           <div className="mb-2 flex items-center gap-2 p-3 rounded-lg max-w-3xl md:max-w-[480px]" style={{ background: 'var(--bg-secondary)' }}>
             <span className="w-2 h-2 rounded-full bg-[#3B82F6] animate-pulse" />
-            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Ei is preparing questions...</span>
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{msg.eiPreparing}</span>
           </div>
         )}
         <form onSubmit={handleSubmit} className="max-w-3xl md:max-w-[480px] flex gap-2">
@@ -345,9 +379,9 @@ export default function Home() {
             type="text"
             ref={inputRef}
             placeholder={
-              contextPhase === 'asking' ? 'Your answer...'
-              : pipeline.status === 'complete' ? 'Follow up to deepen thinking...'
-              : 'What decision are you facing?'
+              contextPhase === 'asking' ? msg.inputPlaceholderContext
+              : pipeline.status === 'complete' ? msg.inputPlaceholderFollowup
+              : msg.inputPlaceholder
             }
             disabled={pipeline.status === 'running' || loadingContextQs}
             className="flex-1 px-3 md:px-4 py-2 md:py-2.5 rounded-xl border text-base md:text-sm focus:outline-none focus:border-[#3B82F6] transition-colors disabled:opacity-50"
@@ -359,15 +393,15 @@ export default function Home() {
             className="px-4 md:px-5 py-2 md:py-2.5 rounded-xl bg-[#3B82F6] text-white text-sm font-medium hover:bg-[#2563EB] transition-colors disabled:opacity-30"
           >
             {pipeline.status === 'running' ? '...'
-              : contextPhase === 'asking' ? 'Answer'
-              : pipeline.status === 'complete' ? 'Follow up'
-              : 'Ask'}
+              : contextPhase === 'asking' ? msg.answerButton
+              : pipeline.status === 'complete' ? msg.followUpButton
+              : msg.askButton}
           </button>
           {contextPhase === 'asking' && (
             <button type="button" onClick={handleSkipContext}
               className="px-3 py-2 rounded-xl text-xs hover:bg-[var(--bg-tertiary)]"
               style={{ color: 'var(--text-dim)' }}>
-              Skip
+              {msg.skipButton}
             </button>
           )}
         </form>
@@ -380,14 +414,14 @@ export default function Home() {
           className={`flex-1 py-2.5 text-xs font-medium text-center transition-colors ${mobileTab === 'chat' ? 'text-[#3B82F6]' : ''}`}
           style={{ color: mobileTab === 'chat' ? '#3B82F6' : 'var(--text-dim)', borderTop: mobileTab === 'chat' ? '2px solid #3B82F6' : '2px solid transparent' }}
         >
-          💬 Chat
+          {msg.chatTab}
         </button>
         <button
           onClick={() => setMobileTab('map')}
           className={`flex-1 py-2.5 text-xs font-medium text-center transition-colors relative ${mobileTab === 'map' ? 'text-[#3B82F6]' : ''}`}
           style={{ color: mobileTab === 'map' ? '#3B82F6' : 'var(--text-dim)', borderTop: mobileTab === 'map' ? '2px solid #3B82F6' : '2px solid transparent' }}
         >
-          🗺️ Map
+          {msg.mapTab}
           {pipeline.status === 'complete' && mobileTab === 'chat' && (
             <span className="absolute top-1.5 right-[calc(50%-24px)] w-2 h-2 rounded-full bg-[#3B82F6] animate-pulse" />
           )}
@@ -398,12 +432,14 @@ export default function Home() {
 }
 
 // ── ストリームエントリー ─────────────────────────────────
-function StreamEntry({ entry, pipeline, expanded, onToggle }: {
+function StreamEntry({ entry, pipeline, expanded, onToggle, locale }: {
   entry: TimelineEntry
   pipeline: ReturnType<typeof usePipeline>
   expanded: boolean
   onToggle: () => void
+  locale: Locale
 }) {
+  const msg = t(locale)
   // ユーザーの質問
   if (entry.type === 'user') {
     return (
@@ -477,7 +513,7 @@ function StreamEntry({ entry, pipeline, expanded, onToggle }: {
           )}
 
           {!expanded && (
-            <p className="text-[10px] mt-1" style={{ color: 'var(--text-ghost)' }}>Click to see facts</p>
+            <p className="text-[10px] mt-1" style={{ color: 'var(--text-ghost)' }}>{msg.clickToSeeFacts}</p>
           )}
         </div>
       </div>
@@ -560,7 +596,7 @@ function StreamEntry({ entry, pipeline, expanded, onToggle }: {
           )}
 
           {!expanded && details.length > 0 && (
-            <p className="text-[10px] mt-1" style={{ color: 'var(--text-ghost)' }}>Click to see details</p>
+            <p className="text-[10px] mt-1" style={{ color: 'var(--text-ghost)' }}>{msg.clickToSeeDetails}</p>
           )}
         </div>
       </div>
@@ -612,7 +648,7 @@ function StreamEntry({ entry, pipeline, expanded, onToggle }: {
           )}
 
           {!expanded && (
-            <p className="text-[10px] mt-1" style={{ color: 'var(--text-ghost)' }}>Click to expand</p>
+            <p className="text-[10px] mt-1" style={{ color: 'var(--text-ghost)' }}>{msg.clickToExpand}</p>
           )}
         </div>
       </div>
@@ -685,7 +721,7 @@ function StreamEntry({ entry, pipeline, expanded, onToggle }: {
         {/* 次の一歩の問いかけ */}
         <div className="mt-4 pt-3 border-t text-center" style={{ borderColor: `${AGENTS.blue.hex}30` }}>
           <p className="text-sm font-medium" style={{ color: AGENTS.blue.hex }}>
-            What will you do next?
+            {msg.whatWillYouDoNext}
           </p>
         </div>
       </div>
