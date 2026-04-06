@@ -9,6 +9,7 @@
   --bg-tertiary: #141414;
   --bg-map: #060608;
   --bg-map-gradient: radial-gradient(ellipse at center, #0a0a1a 0%, #060608 70%);
+  --bg-map-dots: radial-gradient(circle, #1e2456 1px, transparent 1px);
   --bg-overlay: rgba(12, 12, 16, 0.95);
   --border: #181818;
   --border-light: #1a1a1a;
@@ -26,7 +27,8 @@
   --bg-secondary: #ffffff;
   --bg-tertiary: #f0f1f3;
   --bg-map: #f0f2f5;
-  --bg-map-gradient: radial-gradient(ellipse at center, #e8ecf0 0%, #f0f2f5 70%);
+  --bg-map-gradient: radial-gradient(ellipse at center, #e8ecf5 0%, #f0f2f5 70%);
+  --bg-map-dots: radial-gradient(circle, #c7d2fe 1px, transparent 1px);
   --bg-overlay: rgba(248, 249, 250, 0.95);
   --border: #e0e0e0;
   --border-light: #e8e8e8;
@@ -134,4 +136,20 @@ body {
 
 .synthesis-glow {
   animation: synthesisGlow 2s ease-out;
+}
+
+/* マップ背景ドットグリッド（空間感） */
+.map-dots {
+  background-image: var(--bg-map-dots);
+  background-size: 24px 24px;
+}
+
+/* 叡ノードのパルスアニメーション */
+@keyframes eiPulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+}
+
+.ei-pulse {
+  animation: eiPulse 3s ease-in-out infinite;
 }

@@ -179,11 +179,11 @@ export default function Home() {
             <div className="flex items-center gap-2 px-3 py-1 rounded-full" style={{ background: 'var(--bg-tertiary)' }}>
               <span className="w-2 h-2 rounded-full bg-[#3B82F6] animate-pulse" />
               <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                {pipeline.currentStage === 'structure' ? 'Structuring...'
-                  : pipeline.currentStage === 'observe' ? 'Mei gathering facts...'
-                  : pipeline.currentStage === 'deliberate' ? 'Team thinking...'
-                  : pipeline.currentStage === 'verify' ? 'Ri checking logic...'
-                  : 'Ei synthesizing...'}
+                {pipeline.currentStage === 'structure' ? 'Clarifying your question...'
+                  : pipeline.currentStage === 'observe' ? '🔍 Mei — Gathering real-world facts'
+                  : pipeline.currentStage === 'deliberate' ? 'Team debating your question...'
+                  : pipeline.currentStage === 'verify' ? '⚡ Ri — Checking contradictions'
+                  : '🔮 Ei — Weaving all perspectives'}
               </span>
             </div>
           )}

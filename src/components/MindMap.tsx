@@ -191,8 +191,9 @@ export default function MindMap({ pipeline, fullScreen, onNodeClick }: Props) {
     const currentRound = pipeline.round
     const simNodes: SimNode[] = rawNodes.map(n => {
       const lines = wrapText(n.label, maxChars)
-      // importance(1-5)でサイズを決定。5=最大、1=最小
-      const scale = 0.6 + (n.importance / 5) * 0.6  // 0.72〜1.2倍
+      // importance(1-5)でサイズを決定。叡ノードは1.5倍（太陽化）
+      const isSynthesis = n.type === 'synthesis'
+      const scale = isSynthesis ? 1.5 : (0.6 + (n.importance / 5) * 0.6)
       const baseW = Math.min(n.label.length, maxChars) * 7 + 28
       const baseH = lines.length * 16 + 20
       // 過去ラウンドは縮小
@@ -211,6 +212,12 @@ export default function MindMap({ pipeline, fullScreen, onNodeClick }: Props) {
     svg.selectAll('*').remove()
     svg.attr('width', width).attr('height', height)
 
+    // SVGフィルタ: ノードグロー
+    const defs = svg.append('defs')
+    const glowFilter = defs.append('filter').attr('id', 'node-glow')
+    glowFilter.append('feGaussianBlur').attr('stdDeviation', '6').attr('result', 'blur')
+    glowFilter.append('feComposite').attr('in', 'SourceGraphic').attr('in2', 'blur').attr('operator', 'over')
+
     const g = svg.append('g')
 
     // ズーム
@@ -226,7 +233,7 @@ export default function MindMap({ pipeline, fullScreen, onNodeClick }: Props) {
       .data(simEdges)
       .enter().append('line')
       .attr('stroke', d => d.type === 'contradict' ? '#EF4444' : d.type === 'deepens' ? '#3B82F6' : lineColor)
-      .attr('stroke-width', d => d.type === 'contradict' ? 2.5 : d.type === 'deepens' ? 2 : 1)
+      .attr('stroke-width', d => d.type === 'contradict' ? 3 : d.type === 'deepens' ? 2.5 : 1.5)
       .attr('stroke-dasharray', d => d.type === 'contradict' ? '8,4' : d.type === 'deepens' ? '12,4' : 'none')
       .attr('opacity', 0.7)
 
@@ -302,7 +309,7 @@ export default function MindMap({ pipeline, fullScreen, onNodeClick }: Props) {
       .attr('fill', d => d.stance === 'support' ? '#22C55E' : d.stance === 'oppose' ? '#EF4444' : '#F59E0B')
       .attr('font-size', '10px')
 
-    // 叡ノードの視覚的強調: グロー + パルス
+    // 叡ノードの視覚的強調: グローフィルタ + 二重枠 + パルス
     nodeGs.filter(d => d.type === 'synthesis' && !isOld(d))
       .insert('rect', ':first-child')
       .attr('rx', 14).attr('ry', 14)
@@ -312,18 +319,25 @@ export default function MindMap({ pipeline, fullScreen, onNodeClick }: Props) {
       .attr('y', d => -(d.height + 12) / 2)
       .attr('fill', 'none')
       .attr('stroke', AGENTS.blue.hex)
-      .attr('stroke-width', 1.5)
-      .attr('opacity', 0.4)
+      .attr('stroke-width', 2)
+      .attr('opacity', 0.5)
 
     nodeGs.filter(d => d.type === 'synthesis' && !isOld(d))
       .insert('rect', ':first-child')
-      .attr('rx', 18).attr('ry', 18)
-      .attr('width', d => d.width + 24)
-      .attr('height', d => d.height + 24)
-      .attr('x', d => -(d.width + 24) / 2)
-      .attr('y', d => -(d.height + 24) / 2)
-      .attr('fill', `${AGENTS.blue.hex}08`)
-      .attr('stroke', 'none')
+      .attr('rx', 20).attr('ry', 20)
+      .attr('width', d => d.width + 30)
+      .attr('height', d => d.height + 30)
+      .attr('x', d => -(d.width + 30) / 2)
+      .attr('y', d => -(d.height + 30) / 2)
+      .attr('fill', `${AGENTS.blue.hex}10`)
+      .attr('stroke', `${AGENTS.blue.hex}30`)
+      .attr('stroke-width', 1)
+      .style('filter', 'url(#node-glow)')
+
+    // エージェントノードにも軽いグロー
+    nodeGs.filter(d => d.type === 'agent' && !isOld(d))
+      .select('rect')
+      .style('filter', 'url(#node-glow)')
 
     // シミュレーション
     const sim = d3.forceSimulation<SimNode>(simNodes)
@@ -385,7 +399,7 @@ export default function MindMap({ pipeline, fullScreen, onNodeClick }: Props) {
           <span className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-ghost)' }}>Discussion Structure</span>
         </div>
       )}
-      <svg ref={svgRef} className="w-full" style={{ minHeight: fullScreen ? '100%' : '420px', background: fullScreen ? 'var(--bg-map-gradient)' : 'transparent' }} />
+      <svg ref={svgRef} className="w-full map-dots" style={{ minHeight: fullScreen ? '100%' : '420px', background: fullScreen ? 'var(--bg-map-gradient)' : 'transparent' }} />
 
       {/* 凡例 */}
       {pipeline.synthesis && (
