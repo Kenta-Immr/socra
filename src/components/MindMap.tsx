@@ -17,6 +17,7 @@ interface MindNode {
   type: 'question' | 'agent' | 'synthesis' | 'keypoint' | 'followup'
   stance?: string
   round?: number
+  importance: number  // 1-5: ノードサイズを決定。5=最大（叡・質問）、1=最小（keypoint）
 }
 
 interface MindEdge {
@@ -33,7 +34,7 @@ function buildMindMapData(pipeline: PipelineUI): { nodes: MindNode[]; edges: Min
   let prevSynthesisId: string | null = null
   pipeline.allRounds.forEach((rd: RoundData) => {
     const qId = `q-r${rd.round}`
-    nodes.push({ id: qId, label: rd.question.slice(0, 30), color: '#3B82F6', type: rd.round === 0 ? 'question' : 'followup', round: rd.round })
+    nodes.push({ id: qId, label: rd.question.slice(0, 30), color: '#3B82F6', type: rd.round === 0 ? 'question' : 'followup', round: rd.round, importance: 4 })
 
     // 前ラウンドの統合ノードから繋ぐ
     if (prevSynthesisId) {
@@ -50,13 +51,14 @@ function buildMindMapData(pipeline: PipelineUI): { nodes: MindNode[]; edges: Min
         type: 'agent',
         stance: agent.stance,
         round: rd.round,
+        importance: agent.intensity,  // エージェントの重要度スコア(1-5)
       })
       edges.push({ source: qId, target: nodeId, type: 'branch' })
     })
 
     // 過去ラウンドの統合ノード
     const eiId = `ei-r${rd.round}`
-    nodes.push({ id: eiId, label: `叡 R${rd.round + 1}`, color: AGENTS.blue.hex, type: 'synthesis', round: rd.round })
+    nodes.push({ id: eiId, label: `叡 R${rd.round + 1}`, color: AGENTS.blue.hex, type: 'synthesis', round: rd.round, importance: 5 })
     rd.agents.forEach(agent => {
       edges.push({ source: `a-${agent.hat}-r${rd.round}`, target: eiId, type: 'branch' })
     })
@@ -68,7 +70,7 @@ function buildMindMapData(pipeline: PipelineUI): { nodes: MindNode[]; edges: Min
 
   const currentRound = pipeline.round
   const qId = `q-r${currentRound}`
-  nodes.push({ id: qId, label: pipeline.structured.clarified.slice(0, 30), color: '#3B82F6', type: currentRound === 0 ? 'question' : 'followup', round: currentRound })
+  nodes.push({ id: qId, label: pipeline.structured.clarified.slice(0, 30), color: '#3B82F6', type: currentRound === 0 ? 'question' : 'followup', round: currentRound, importance: 5 })
 
   if (prevSynthesisId) {
     edges.push({ source: prevSynthesisId, target: qId, type: 'deepens' })
@@ -84,12 +86,13 @@ function buildMindMapData(pipeline: PipelineUI): { nodes: MindNode[]; edges: Min
       type: 'agent',
       stance: agent.stance,
       round: currentRound,
+      importance: agent.intensity,  // エージェントの重要度(1-5)でサイズ決定
     })
     edges.push({ source: qId, target: nodeId, type: 'branch' })
 
     if (agent.keyPoints.length > 1) {
       const kpId = `kp-${agent.hat}-r${currentRound}`
-      nodes.push({ id: kpId, label: agent.keyPoints[1].slice(0, 20), color: info.hex, type: 'keypoint', round: currentRound })
+      nodes.push({ id: kpId, label: agent.keyPoints[1].slice(0, 20), color: info.hex, type: 'keypoint', round: currentRound, importance: 2 })
       edges.push({ source: nodeId, target: kpId, type: 'branch' })
     }
   })
@@ -108,6 +111,7 @@ function buildMindMapData(pipeline: PipelineUI): { nodes: MindNode[]; edges: Min
       color: AGENTS.blue.hex,
       type: 'synthesis',
       round: currentRound,
+      importance: 5,
     })
     pipeline.agents.forEach(agent => {
       edges.push({ source: `a-${agent.hat}-r${currentRound}`, target: eiId, type: 'branch' })
@@ -132,6 +136,8 @@ interface SimNode extends d3.SimulationNodeDatum {
   color: string
   type: MindNode['type']
   stance?: string
+  round?: number
+  importance: number
   width: number
   height: number
 }
@@ -162,12 +168,20 @@ export default function MindMap({ pipeline, fullScreen }: Props) {
     const mutedColor = isDark ? '#999' : '#555'
     const lineColor = isDark ? '#556' : '#bbb'
 
-    // ノードサイズをテキスト長から計算
+    // ノードサイズを重要度(importance)基準で計算
     const maxChars = 15
+    const currentRound = pipeline.round
     const simNodes: SimNode[] = rawNodes.map(n => {
       const lines = wrapText(n.label, maxChars)
-      const w = Math.min(n.label.length, maxChars) * 7 + 28
-      const h = lines.length * 16 + 20
+      // importance(1-5)でサイズを決定。5=最大、1=最小
+      const scale = 0.6 + (n.importance / 5) * 0.6  // 0.72〜1.2倍
+      const baseW = Math.min(n.label.length, maxChars) * 7 + 28
+      const baseH = lines.length * 16 + 20
+      // 過去ラウンドは縮小
+      const isOldRound = n.round !== undefined && n.round < currentRound
+      const roundScale = isOldRound ? 0.75 : 1
+      const w = baseW * scale * roundScale
+      const h = baseH * scale * roundScale
       return { ...n, width: w, height: h }
     })
 
@@ -215,6 +229,9 @@ export default function MindMap({ pipeline, fullScreen }: Props) {
         })
       )
 
+    // 過去ラウンドかどうか
+    const isOld = (d: SimNode) => d.round !== undefined && d.round < currentRound
+
     // 角丸長方形
     nodeGs.append('rect')
       .attr('rx', 10).attr('ry', 10)
@@ -223,11 +240,12 @@ export default function MindMap({ pipeline, fullScreen }: Props) {
       .attr('x', d => -d.width / 2)
       .attr('y', d => -d.height / 2)
       .attr('fill', d => {
-        if (d.type === 'question') return bgColor
+        if (d.type === 'question' || d.type === 'followup') return bgColor
         return `${d.color}18`
       })
       .attr('stroke', d => d.color)
       .attr('stroke-width', d => d.type === 'question' || d.type === 'synthesis' ? 2 : 1.5)
+      .attr('opacity', d => isOld(d) ? 0.5 : 1)
 
     // テキスト（折り返し対応）
     nodeGs.each(function (d) {
@@ -236,14 +254,16 @@ export default function MindMap({ pipeline, fullScreen }: Props) {
       const lineHeight = 14
       const startY = -(lines.length - 1) * lineHeight / 2
 
+      const oldNode = isOld(d)
       lines.forEach((line, i) => {
         g.append('text')
           .text(line)
           .attr('text-anchor', 'middle')
           .attr('dy', startY + i * lineHeight + 4)
-          .attr('fill', d.type === 'keypoint' ? mutedColor : d.type === 'question' ? textColor : d.color)
+          .attr('fill', d.type === 'keypoint' ? mutedColor : d.type === 'question' || d.type === 'followup' ? textColor : d.color)
           .attr('font-size', d.type === 'keypoint' ? '10px' : '11px')
           .attr('font-weight', d.type === 'question' || d.type === 'synthesis' ? '600' : '400')
+          .attr('opacity', oldNode ? 0.5 : 1)
       })
     })
 
