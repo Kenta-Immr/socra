@@ -5,14 +5,13 @@ import { useState, useEffect, useCallback } from 'react'
 export type Theme = 'dark' | 'light'
 
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>('dark')
+  const [theme, setTheme] = useState<Theme>('light')
 
   useEffect(() => {
     const saved = localStorage.getItem('socra-theme') as Theme | null
-    if (saved === 'light' || saved === 'dark') {
-      setTheme(saved)
-      document.documentElement.setAttribute('data-theme', saved)
-    }
+    const initial = saved === 'dark' ? 'dark' : 'light'
+    setTheme(initial)
+    document.documentElement.setAttribute('data-theme', initial)
   }, [])
 
   const toggle = useCallback(() => {
