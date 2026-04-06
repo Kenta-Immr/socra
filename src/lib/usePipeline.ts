@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import type { SSEEvent, PipelineStage, AgentResponse, StructuredQuestion, ObservationResult, VerificationResult, SynthesisResult } from '@/types'
 
 export type TimelineEntry = {
@@ -15,6 +15,14 @@ export type TimelineEntry = {
   timestamp: string
 }
 
+// ラウンドごとのエージェント結果（マップ累積用）
+export type RoundData = {
+  round: number
+  question: string
+  agents: AgentResponse[]
+  structured: StructuredQuestion | null
+}
+
 export type PipelineUI = {
   status: 'idle' | 'running' | 'complete' | 'error'
   currentStage: PipelineStage | null
@@ -25,6 +33,9 @@ export type PipelineUI = {
   verification: VerificationResult | null
   synthesis: SynthesisResult | null
   error: string | null
+  // マップ成長用: 全ラウンドの累積データ
+  round: number
+  allRounds: RoundData[]
 }
 
 const STAGE_LABELS: Record<PipelineStage, string> = {
@@ -46,13 +57,20 @@ export function usePipeline() {
     verification: null,
     synthesis: null,
     error: null,
+    round: 0,
+    allRounds: [],
   })
+
+  const roundRef = useRef(0)
 
   const addTimeline = useCallback((entry: TimelineEntry) => {
     setState(prev => ({ ...prev, timeline: [...prev.timeline, entry] }))
   }, [])
 
   const run = useCallback(async (question: string, context?: string) => {
+    const currentRound = roundRef.current
+    roundRef.current += 1
+
     const userEntry: TimelineEntry = {
       id: `user-${Date.now()}`,
       type: 'user',
@@ -61,17 +79,32 @@ export function usePipeline() {
       timestamp: new Date().toISOString(),
     }
 
-    setState(prev => ({
-      status: 'running',
-      currentStage: 'structure',
-      timeline: [...prev.timeline, userEntry],
-      structured: null,
-      observation: null,
-      agents: [],
-      verification: null,
-      synthesis: null,
-      error: null,
-    }))
+    // 前ラウンドのデータを保存してから新ラウンド開始
+    setState(prev => {
+      // 前ラウンドの結果をallRoundsに追加（初回以外）
+      const updatedRounds = prev.agents.length > 0
+        ? [...prev.allRounds, {
+            round: currentRound,
+            question: prev.structured?.clarified ?? question,
+            agents: prev.agents,
+            structured: prev.structured,
+          }]
+        : prev.allRounds
+
+      return {
+        status: 'running' as const,
+        currentStage: 'structure' as PipelineStage,
+        timeline: [...prev.timeline, userEntry],
+        structured: null,
+        observation: null,
+        agents: [],
+        verification: null,
+        synthesis: null,
+        error: null,
+        round: currentRound + 1,
+        allRounds: updatedRounds,
+      }
+    })
 
     try {
       const res = await fetch('/api/pipeline', {
@@ -103,7 +136,7 @@ export function usePipeline() {
             case 'stage:start':
               setState(prev => ({ ...prev, currentStage: event.stage! }))
               addTimeline({
-                id: `stage-${event.stage}-start`,
+                id: `stage-${event.stage}-start-${Date.now()}`,
                 type: 'system',
                 stage: event.stage!,
                 content: STAGE_LABELS[event.stage!],
@@ -118,7 +151,7 @@ export function usePipeline() {
                 const obs = event.data as ObservationResult
                 setState(prev => ({ ...prev, observation: obs }))
                 addTimeline({
-                  id: 'mei-facts',
+                  id: `mei-facts-${Date.now()}`,
                   type: 'agent',
                   name: 'Mei',
                   hat: 'white',
@@ -130,7 +163,7 @@ export function usePipeline() {
                 const ver = event.data as VerificationResult
                 setState(prev => ({ ...prev, verification: ver }))
                 addTimeline({
-                  id: 'ri-verify',
+                  id: `ri-verify-${Date.now()}`,
                   type: 'agent',
                   name: 'Ri',
                   hat: 'verify',
@@ -146,7 +179,7 @@ export function usePipeline() {
                 const syn = event.data as SynthesisResult
                 setState(prev => ({ ...prev, synthesis: syn }))
                 addTimeline({
-                  id: 'ei-synthesis',
+                  id: `ei-synthesis-${Date.now()}`,
                   type: 'synthesis',
                   name: 'Ei',
                   hat: 'blue',
@@ -162,7 +195,7 @@ export function usePipeline() {
                 const agent = event.data as AgentResponse
                 setState(prev => ({ ...prev, agents: [...prev.agents, agent] }))
                 addTimeline({
-                  id: `agent-${agent.hat}`,
+                  id: `agent-${agent.hat}-${Date.now()}`,
                   type: 'agent',
                   name: agent.name,
                   hat: agent.hat,

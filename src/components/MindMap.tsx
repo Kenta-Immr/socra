@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 import { AGENTS } from '@/types'
-import type { PipelineUI } from '@/lib/usePipeline'
+import type { PipelineUI, RoundData } from '@/lib/usePipeline'
 
 type Props = {
   pipeline: PipelineUI
@@ -14,58 +14,103 @@ interface MindNode {
   id: string
   label: string
   color: string
-  type: 'question' | 'agent' | 'synthesis' | 'keypoint'
+  type: 'question' | 'agent' | 'synthesis' | 'keypoint' | 'followup'
   stance?: string
+  round?: number
 }
 
 interface MindEdge {
   source: string
   target: string
-  type: 'branch' | 'contradict'
+  type: 'branch' | 'contradict' | 'deepens'
 }
 
 function buildMindMapData(pipeline: PipelineUI): { nodes: MindNode[]; edges: MindEdge[] } {
   const nodes: MindNode[] = []
   const edges: MindEdge[] = []
+
+  // 過去ラウンドのノードを追加
+  let prevSynthesisId: string | null = null
+  pipeline.allRounds.forEach((rd: RoundData) => {
+    const qId = `q-r${rd.round}`
+    nodes.push({ id: qId, label: rd.question.slice(0, 30), color: '#3B82F6', type: rd.round === 0 ? 'question' : 'followup', round: rd.round })
+
+    // 前ラウンドの統合ノードから繋ぐ
+    if (prevSynthesisId) {
+      edges.push({ source: prevSynthesisId, target: qId, type: 'deepens' })
+    }
+
+    rd.agents.forEach(agent => {
+      const info = AGENTS[agent.hat]
+      const nodeId = `a-${agent.hat}-r${rd.round}`
+      nodes.push({
+        id: nodeId,
+        label: `${info.name}: ${agent.keyPoints[0]?.slice(0, 20) ?? ''}`,
+        color: info.hex,
+        type: 'agent',
+        stance: agent.stance,
+        round: rd.round,
+      })
+      edges.push({ source: qId, target: nodeId, type: 'branch' })
+    })
+
+    // 過去ラウンドの統合ノード
+    const eiId = `ei-r${rd.round}`
+    nodes.push({ id: eiId, label: `叡 R${rd.round + 1}`, color: AGENTS.blue.hex, type: 'synthesis', round: rd.round })
+    rd.agents.forEach(agent => {
+      edges.push({ source: `a-${agent.hat}-r${rd.round}`, target: eiId, type: 'branch' })
+    })
+    prevSynthesisId = eiId
+  })
+
+  // 現在のラウンド
   if (!pipeline.structured) return { nodes, edges }
 
-  nodes.push({ id: 'q', label: pipeline.structured.clarified.slice(0, 35), color: '#3B82F6', type: 'question' })
+  const currentRound = pipeline.round
+  const qId = `q-r${currentRound}`
+  nodes.push({ id: qId, label: pipeline.structured.clarified.slice(0, 30), color: '#3B82F6', type: currentRound === 0 ? 'question' : 'followup', round: currentRound })
+
+  if (prevSynthesisId) {
+    edges.push({ source: prevSynthesisId, target: qId, type: 'deepens' })
+  }
 
   pipeline.agents.forEach(agent => {
     const info = AGENTS[agent.hat]
-    const nodeId = `a-${agent.hat}`
+    const nodeId = `a-${agent.hat}-r${currentRound}`
     nodes.push({
       id: nodeId,
       label: `${info.name}: ${agent.keyPoints[0]?.slice(0, 25) ?? agent.reasoning.slice(0, 25)}`,
       color: info.hex,
       type: 'agent',
       stance: agent.stance,
+      round: currentRound,
     })
-    edges.push({ source: 'q', target: nodeId, type: 'branch' })
+    edges.push({ source: qId, target: nodeId, type: 'branch' })
 
-    // キーポイント1個だけ（被り防止）
     if (agent.keyPoints.length > 1) {
-      const kpId = `kp-${agent.hat}`
-      nodes.push({ id: kpId, label: agent.keyPoints[1].slice(0, 20), color: info.hex, type: 'keypoint' })
+      const kpId = `kp-${agent.hat}-r${currentRound}`
+      nodes.push({ id: kpId, label: agent.keyPoints[1].slice(0, 20), color: info.hex, type: 'keypoint', round: currentRound })
       edges.push({ source: nodeId, target: kpId, type: 'branch' })
     }
   })
 
   if (pipeline.verification) {
     pipeline.verification.contradictions.forEach(c => {
-      edges.push({ source: `a-${c.hat1}`, target: `a-${c.hat2}`, type: 'contradict' })
+      edges.push({ source: `a-${c.hat1}-r${currentRound}`, target: `a-${c.hat2}-r${currentRound}`, type: 'contradict' })
     })
   }
 
   if (pipeline.synthesis) {
+    const eiId = `ei-r${currentRound}`
     nodes.push({
-      id: 'ei',
+      id: eiId,
       label: `叡: ${pipeline.synthesis.recommendation.split('\n')[0]?.slice(0, 30) ?? ''}`,
       color: AGENTS.blue.hex,
       type: 'synthesis',
+      round: currentRound,
     })
     pipeline.agents.forEach(agent => {
-      edges.push({ source: `a-${agent.hat}`, target: 'ei', type: 'branch' })
+      edges.push({ source: `a-${agent.hat}-r${currentRound}`, target: eiId, type: 'branch' })
     })
   }
 
@@ -148,9 +193,9 @@ export default function MindMap({ pipeline, fullScreen }: Props) {
     const links = linkGroup.selectAll('line')
       .data(simEdges)
       .enter().append('line')
-      .attr('stroke', d => d.type === 'contradict' ? '#EF4444' : lineColor)
-      .attr('stroke-width', d => d.type === 'contradict' ? 2.5 : 1)
-      .attr('stroke-dasharray', d => d.type === 'contradict' ? '8,4' : 'none')
+      .attr('stroke', d => d.type === 'contradict' ? '#EF4444' : d.type === 'deepens' ? '#3B82F6' : lineColor)
+      .attr('stroke-width', d => d.type === 'contradict' ? 2.5 : d.type === 'deepens' ? 2 : 1)
+      .attr('stroke-dasharray', d => d.type === 'contradict' ? '8,4' : d.type === 'deepens' ? '12,4' : 'none')
       .attr('opacity', 0.7)
 
     // ノード
