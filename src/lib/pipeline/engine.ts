@@ -14,6 +14,7 @@ import type {
   SynthesisResult,
   HatColor,
   Fact,
+  MemoryContext,
 } from '@/types'
 
 // ── ルーティング判断（叡が判断）──────────────────────
@@ -64,7 +65,7 @@ Respond briefly.`,
 }
 
 // ── Stage 0: 問いの構造化 ─────────────────────────────
-export async function runStructure(question: string, userContext?: string, userName?: string): Promise<StructuredQuestion> {
+export async function runStructure(question: string, userContext?: string, userName?: string, memory?: MemoryContext): Promise<StructuredQuestion> {
   const { object } = await generateObject({
     model: models.structure,
     schema: z.object({
@@ -74,7 +75,7 @@ export async function runStructure(question: string, userContext?: string, userN
       timeHorizon: z.string().describe('判断の時間軸'),
       reversibility: z.enum(['reversible', 'partially', 'irreversible']),
     }),
-    prompt: prompts.structure(question, userContext, userName),
+    prompt: prompts.structure(question, userContext, userName, memory),
   })
 
   return { original: question, ...object }
@@ -196,11 +197,12 @@ export async function runSynthesize(
   verification: VerificationResult,
   quickReason?: string,
   userName?: string,
-  round: number = 0
+  round: number = 0,
+  memory?: MemoryContext,
 ): Promise<SynthesisResult> {
   const prompt = quickReason
     ? prompts.synthesizeQuick(sq, quickReason, userName)
-    : prompts.synthesize(sq, facts, agents, verification, userName, round)
+    : prompts.synthesize(sq, facts, agents, verification, userName, round, memory)
 
   const { text } = await generateText({
     model: models.synthesize,

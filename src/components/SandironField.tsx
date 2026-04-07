@@ -95,6 +95,10 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
   const thinkingPhaseRef = useRef(0)
   const prevThinkingRef = useRef(false)
 
+  // emergence animation — 世界が立ち上がる（0→1 over 2s）
+  const emergenceRef = useRef(0)
+  const hasEmergedRef = useRef(false)
+
   // theme from html attribute
   const [isDark, setIsDark] = useState(true)
   useEffect(() => {
@@ -171,9 +175,12 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
       if (!data) return
       const n = hatOrder.length
       const angle = (idx / n) * Math.PI * 2 - Math.PI / 2
-      // 叡(blue)はやや中央寄り（統合者）、他は均等配置
+      // intensityで軌道半径を変える — 強い意見ほど中央寄り
+      // intensity 1 → 95%軌道, 3 → 75%, 5 → 55%
       const isEi = hat === 'blue'
-      const r = isEi ? orbit * 0.6 : orbit
+      const absInt = Math.abs(data.intensity)
+      const intensityPull = isEi ? 0.5 : 1.0 - (absInt / 5) * 0.45  // 叡は常に中央寄り
+      const r = orbit * intensityPull
       const color = hexToRgb(HAT_COLORS[hat] ?? '#94a3b8')
       // intensity の絶対値でビジュアル強度を決定（色ではなく数値が支配する）
       const absIntensity = Math.abs(data.intensity)
@@ -204,20 +211,24 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
   ): { x: number; y: number } => {
     let bx = 0, by = 0
 
-    // 中央核の引力
+    // 中央核の引力（強化 — 力線を「問い」へ確実に導く）
     const dxc = cx - x, dyc = cy - y
     const dc = Math.sqrt(dxc * dxc + dyc * dyc) + 1
-    bx += dxc / (dc * dc) * 800
-    by += dyc / (dc * dc) * 800
+    bx += dxc / (dc * dc) * 1200
+    by += dyc / (dc * dc) * 1200
 
-    // 各エージェントの影響（引力・斥力・揺れ）
+    // 各エージェントの影響
+    // 全エージェントが斥力（力線を押し出す）→ 中央引力に導かれて「問い」に収束
+    // stanceは力線の色で表現。力場では「個性の強さ」だけが影響する
     for (const ag of geos) {
       const dx = ag.x - x, dy = ag.y - y
       const d = Math.sqrt(dx * dx + dy * dy) + 1
 
-      let charge = ag.stance === 'support' ? 1.0
-        : ag.stance === 'oppose' ? -1.0
-        : Math.sin(t * 1.5 + ag.x * 0.01) * 0.8  // caution = 揺れ
+      // 全員斥力ベース（エージェントから力線を押し出す）
+      // cautionだけ微妙な揺れを加える（方向が定まらない感じ）
+      let charge = ag.stance === 'caution'
+        ? -0.8 + Math.sin(t * 1.5 + ag.x * 0.01) * 0.3
+        : -1.0
 
       // intensityで影響の強さをスケール
       charge *= (ag.intensity / 5) * 1.5 + 0.3  // intensity 0でも微弱な影響
@@ -237,7 +248,7 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
 
   const traceLine = useCallback((
     startX: number, startY: number, geos: AgentGeo[], cx: number, cy: number,
-    steps: number, stepSize: number, t: number, _sourceStance: string,
+    steps: number, stepSize: number, t: number,
   ) => {
     const pts: Array<{ x: number; y: number }> = [{ x: startX, y: startY }]
     let px = startX, py = startY
@@ -247,9 +258,9 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
       px += f.x * stepSize
       py += f.y * stepSize
 
-      // 中央核に近すぎたら停止
+      // 中央核のすぐ近くまで力線を到達させる（「問い」に収束）
       const dc = Math.sqrt((px - cx) ** 2 + (py - cy) ** 2)
-      if (dc < 15) break
+      if (dc < 6) break
 
       pts.push({ x: px, y: py })
     }
@@ -293,6 +304,10 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
 
     if (geos.length === 0 && !isThinking) return
 
+    // Emergence factor (easeOutCubic for organic feel)
+    const rawE = emergenceRef.current
+    const emergence = 1 - Math.pow(1 - rawE, 3)
+
     // ── Field lines ──
     for (let ai = 0; ai < geos.length; ai++) {
       const ag = geos[ai]
@@ -315,7 +330,7 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
         const sx = ag.x + Math.cos(spreadAngle) * startDist
         const sy = ag.y + Math.sin(spreadAngle) * startDist
 
-        const pts = traceLine(sx, sy, geos, cx, cy, 150, 2.5, t, ag.stance)
+        const pts = traceLine(sx, sy, geos, cx, cy, 150, 2.5, t)
         if (pts.length < 2) continue
 
         // Line width: intensity の絶対値に厳密対応
@@ -329,8 +344,8 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
         ctx.moveTo(pts[0].x, pts[0].y)
         for (let pi = 1; pi < pts.length; pi++) ctx.lineTo(pts[pi].x, pts[pi].y)
 
-        ctx.strokeStyle = rgba(stanceHue.r, stanceHue.g, stanceHue.b, baseAlpha * thinkingDim)
-        ctx.lineWidth = lineWidth
+        ctx.strokeStyle = rgba(stanceHue.r, stanceHue.g, stanceHue.b, baseAlpha * thinkingDim * emergence)
+        ctx.lineWidth = lineWidth * emergence
         if (isDark) { ctx.shadowColor = rgba(stanceHue.r, stanceHue.g, stanceHue.b, 0.3); ctx.shadowBlur = ag.isDominant ? 8 : 3 }
         ctx.stroke()
         ctx.shadowBlur = 0
@@ -353,7 +368,7 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
 
     // ── Central core (叡) ──
     const corePulse = isThinking ? 0.6 + 0.4 * Math.sin(t * 4) : 1
-    const coreR = 12 + Math.sin(t * (isThinking ? 3 : 1.2)) * (isThinking ? 3 : 1.5)
+    const coreR = (12 + Math.sin(t * (isThinking ? 3 : 1.2)) * (isThinking ? 3 : 1.5)) * emergence
 
     // Outer glow
     const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR * 4)
@@ -397,7 +412,7 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
 
       const absInt = Math.abs(ag.intensity)
       const pulse = Math.sin(t * 3 + ai * 1.2) * (absInt / 5) * 2.5  // intensity高い→脈動大きい
-      const r = ag.baseRadius + pulse
+      const r = (ag.baseRadius + pulse) * emergence
 
       // Glow: intensity の絶対値に比例
       const glowR = r * (1.5 + (absInt / 5) * 3)  // 0→1.5倍, 5→4.5倍
@@ -443,9 +458,10 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
         ctx.fillText(sym, ag.x, ag.y - r - 6)
       }
 
-      // Name label
+      // Name label (emerges later for staggered feel)
+      const labelAlpha = Math.max(0, emergence * 1.5 - 0.5)  // starts at 33% emergence
       ctx.font = `${ag.isDominant ? 'bold ' : ''}10px sans-serif`
-      ctx.fillStyle = isDark ? rgba(226, 232, 240, 0.7 * nodeAlpha) : rgba(30, 58, 138, 0.7 * nodeAlpha)
+      ctx.fillStyle = isDark ? rgba(226, 232, 240, 0.7 * nodeAlpha * labelAlpha) : rgba(30, 58, 138, 0.7 * nodeAlpha * labelAlpha)
       ctx.textAlign = 'center'
       ctx.fillText(`${ag.kanji} ${ag.name}`, ag.x, ag.y + r + 14)
     }
@@ -534,6 +550,16 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
       tRef.current += dt
 
       if (isThinking()) thinkingPhaseRef.current += dt * 4
+
+      // Emergence: データ到着で開始、2秒かけて0→1
+      const hasData = geoRef.current.length > 0 || isThinking()
+      if (hasData && !hasEmergedRef.current) {
+        hasEmergedRef.current = true
+        emergenceRef.current = 0
+      }
+      if (hasEmergedRef.current && emergenceRef.current < 1) {
+        emergenceRef.current = Math.min(1, emergenceRef.current + dt * 0.5) // 2秒で完了
+      }
 
       // Detect thinking→done transition: fire ripple
       const wasThinking = prevThinkingRef.current

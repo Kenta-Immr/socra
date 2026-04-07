@@ -156,6 +156,46 @@ export interface RadarChartData {
   pattern: string  // e.g. "防衛型", "拡張型", "バランス型"
 }
 
+// ── ユーザーメモリ ────────────────────────────────────
+export type MemoryType =
+  | 'stuck_pattern'      // 思考の止まりパターン
+  | 'deep_reflection'    // 深く考えた問い
+  | 'surface_pass'       // 表面で流した問い
+  | 'decision_made'      // 何を選んだか
+  | 'decision_deferred'  // 何を保留したか
+
+export interface UserMemoryEntry {
+  id: string
+  userId: string
+  sessionId?: string
+  memoryType: MemoryType
+  content: string          // ユーザー自身の言葉
+  patternNote?: string     // 抽出されたパターンの説明
+  questionContext?: string  // どんな問いへの反応か
+  agentName?: string
+  weight: number           // 1-10（繰り返しで加算）
+  createdAt: string
+}
+
+export interface UserVocab {
+  id: string
+  userId: string
+  word: string
+  context?: string
+  frequency: number
+  createdAt: string
+}
+
+export interface MemoryContext {
+  stuckPatterns: string[]     // 上位3件のpattern_note
+  deepReflections: string[]   // 上位3件のcontent
+  decisions: string[]         // 直近3件の判断内容
+  vocab: string[]             // 頻出語彙 上位5語
+  sessionCount: number
+  profession?: string
+  background?: string
+}
+
 // ── セッション ────────────────────────────────────────
 export type SessionStatus = 'structuring' | 'observing' | 'deliberating' | 'verifying' | 'synthesizing' | 'complete'
 

@@ -2,10 +2,44 @@
 // 核心: 各エージェントは「認識論的立場」を持つ。名前だけでなく、世界の見方が違う。
 // DW設計原則: ①何者かの定義 ②誠実さの内面化 ③目的からの逆算
 
-import type { StructuredQuestion, AgentResponse, VerificationResult, Fact, HatColor } from '@/types'
+import type { StructuredQuestion, AgentResponse, VerificationResult, Fact, HatColor, MemoryContext } from '@/types'
+
+// ── ユーザーメモリをプロンプト用テキストに変換 ──────────
+function buildMemoryBlock(mem?: MemoryContext): string {
+  if (!mem || mem.sessionCount === 0) return ''
+
+  const lines: string[] = ['## What You Know About This User (from previous sessions)']
+
+  if (mem.profession || mem.background) {
+    lines.push(`- Profile: ${[mem.profession, mem.background].filter(Boolean).join(', ')}`)
+  }
+  lines.push(`- Sessions so far: ${mem.sessionCount}`)
+
+  if (mem.stuckPatterns.length > 0) {
+    lines.push(`- Thinking patterns (where they tend to get stuck): ${mem.stuckPatterns.join('; ')}`)
+  }
+  if (mem.decisions.length > 0) {
+    lines.push(`- Recent decisions: ${mem.decisions.join('; ')}`)
+  }
+  if (mem.deepReflections.length > 0) {
+    lines.push(`- Topics they think deeply about: ${mem.deepReflections.map(r => r.slice(0, 80)).join('; ')}`)
+  }
+  if (mem.vocab.length > 0) {
+    lines.push(`- Their vocabulary/metaphors: ${mem.vocab.join(', ')}`)
+  }
+
+  lines.push('')
+  lines.push('Use this context to ask BETTER questions. Reference their patterns. Use their words. If they tend to get stuck at a certain point, proactively address it.')
+  lines.push('')
+
+  return lines.join('\n')
+}
+
 export const prompts = {
   // ── Stage 0: 問いの構造化 ─────────────────────────
-  structure: (question: string, userContext?: string, userName?: string) => `You are a decision structuring expert. Your job is to take a raw question and make it precise enough for rigorous multi-perspective analysis.
+  structure: (question: string, userContext?: string, userName?: string, memory?: MemoryContext) => `You are a decision structuring expert. Your job is to take a raw question and make it precise enough for rigorous multi-perspective analysis.
+
+${buildMemoryBlock(memory)}
 
 ## Input
 User's raw question: "${question}"
@@ -291,8 +325,11 @@ IMPORTANT: Respond in the SAME LANGUAGE as the decision question. If the questio
     agents: AgentResponse[],
     verification: VerificationResult,
     userName?: string,
-    round: number = 0
+    round: number = 0,
+    memory?: MemoryContext,
   ) => `You are Ei (叡) — the mentor who illuminates the path to your decision.
+
+${buildMemoryBlock(memory)}
 
 ## Your Identity
 - Name: Ei (叡), meaning "wisdom, the insight that sees the whole"

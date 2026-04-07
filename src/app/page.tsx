@@ -7,6 +7,8 @@ import type { HatColor } from '@/types'
 import { useTheme } from '@/hooks/useTheme'
 import { t, type Locale } from '@/i18n/locales'
 import { saveSession, updateSession } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/client'
+import type { MemoryContext } from '@/types'
 import dynamic from 'next/dynamic'
 
 // const MindMap = dynamic(() => import('@/components/MindMap'), { ssr: false })  // fallback preserved
@@ -69,6 +71,27 @@ export default function Home() {
 
   // モバイルタブ切り替え
   const [mobileTab, setMobileTab] = useState<'chat' | 'map'>('chat')
+
+  // メモリコンテキスト
+  const [memoryContext, setMemoryContext] = useState<MemoryContext | null>(null)
+
+  // 匿名認証 + メモリ取得
+  useEffect(() => {
+    const init = async () => {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        await supabase.auth.signInAnonymously()
+      }
+      // メモリ取得
+      try {
+        const res = await fetch('/api/memory/context')
+        const { memoryContext: mc } = await res.json()
+        if (mc) setMemoryContext(mc)
+      } catch { /* メモリ取得失敗は無視 — 初回は空 */ }
+    }
+    init()
+  }, [])
 
   // 多言語
   const [locale, setLocale] = useState<Locale>(() => {
@@ -169,13 +192,13 @@ export default function Home() {
       const questions = data.questions ?? []
       if (questions.length === 0 || data.error) {
         setContextPhase('done')
-        pipeline.run(q)
+        pipeline.run(q, undefined, undefined, memoryContext)
       } else {
         setContextQuestions(questions)
       }
     } catch {
       setContextPhase('done')
-      pipeline.run(q)
+      pipeline.run(q, undefined, undefined, memoryContext)
     } finally {
       setLoadingContextQs(false)
     }
@@ -197,7 +220,7 @@ export default function Home() {
       const contextStr = contextQuestions.map((q, i) => `Q: ${q}\nA: ${newAnswers[i]}`).join('\n\n')
       setSessionContext(contextStr)
       const name = userName ?? newAnswers[0]
-      pipeline.run(originalQuestion, contextStr, name)
+      pipeline.run(originalQuestion, contextStr, name, memoryContext)
     } else {
       setCurrentContextQ(prev => prev + 1)
     }
@@ -209,7 +232,7 @@ export default function Home() {
       ? contextQuestions.slice(0, contextAnswers.length).map((q, i) => `Q: ${q}\nA: ${contextAnswers[i]}`).join('\n\n')
       : ''
     if (contextStr) setSessionContext(contextStr)
-    pipeline.run(originalQuestion, contextStr)
+    pipeline.run(originalQuestion, contextStr, undefined, memoryContext)
   }
 
   function handleFollowUp(e: React.FormEvent) {
@@ -221,7 +244,7 @@ export default function Home() {
       ? `\n\n## Previous conversation:\n${sessionHistory.join('\n---\n')}`
       : ''
     setOriginalQuestion(q)
-    pipeline.run(q, `${sessionContext}${historyStr}`)
+    pipeline.run(q, `${sessionContext}${historyStr}`, undefined, memoryContext)
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -475,11 +498,23 @@ export default function Home() {
         {/* 右: マインドマップ（PC=常時表示、モバイル=Mapタブ時） */}
         <div className={`${mobileTab === 'map' ? 'flex' : 'hidden'} md:flex flex-1 relative flex-col`} style={{ background: 'var(--bg-map)' }}>
           {(pipeline.status === 'running' || pipeline.status === 'complete') ? (
-            <SandironField pipeline={pipeline} fullScreen onNodeClick={(node) => setSelectedNode({
-              id: node.id, label: `${node.kanji} ${node.agentName}`, color: '#3B82F6',
-              type: 'agent', hat: node.hat, stance: node.stance, round: node.round,
-              importance: node.intensity, fullText: node.reasoning,
-            })} />
+            <SandironField pipeline={pipeline} fullScreen onNodeClick={(node) => {
+              setSelectedNode({
+                id: node.id, label: `${node.kanji} ${node.agentName}`, color: '#3B82F6',
+                type: 'agent', hat: node.hat, stance: node.stance, round: node.round,
+                importance: node.intensity, fullText: node.reasoning,
+              })
+              // 左ペインの該当エージェントへスクロール＆ハイライト
+              const el = document.querySelector(`[data-agent-hat="${node.hat}"]`) as HTMLElement
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                el.style.transition = 'box-shadow 0.3s'
+                el.style.boxShadow = `0 0 0 2px ${hatColor(node.hat)}66`
+                setTimeout(() => { el.style.boxShadow = '' }, 2000)
+              }
+              // モバイル: 左ペインに切り替え
+              if (window.innerWidth < 768) setMobileTab('chat')
+            }} />
           ) : (
             <div className="flex items-center justify-center h-full">
               <div className="text-center space-y-3">
@@ -629,6 +664,7 @@ function StreamEntry({ entry, pipeline, expanded, onToggle, locale, onAgentFocus
 
     return (
       <div
+        data-agent-hat={entry.hat}
         className="rounded-xl border transition-all cursor-pointer hover:shadow-sm"
         style={{ borderColor: `${color}33`, borderLeftWidth: '3px', borderLeftColor: color }}
         onClick={onToggle}
@@ -690,6 +726,7 @@ function StreamEntry({ entry, pipeline, expanded, onToggle, locale, onAgentFocus
 
     return (
       <div
+        data-agent-hat={entry.hat}
         className="rounded-xl border transition-all cursor-pointer hover:shadow-sm"
         style={{ borderColor: `${color}33`, borderLeftWidth: '3px', borderLeftColor: color }}
         onClick={onToggle}
@@ -772,6 +809,7 @@ function StreamEntry({ entry, pipeline, expanded, onToggle, locale, onAgentFocus
 
     return (
       <div
+        data-agent-hat={entry.hat}
         className="rounded-xl border transition-all cursor-pointer hover:shadow-sm"
         style={{ borderColor: `${color}33`, borderLeftWidth: '3px', borderLeftColor: color }}
         onClick={onToggle}

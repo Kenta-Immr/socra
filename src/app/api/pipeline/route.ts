@@ -2,12 +2,14 @@
 // 5段パイプラインを順次実行し、各ステージの結果をSSEでストリーミング
 import { runStructure, runObserve, runDeliberate, runVerify, runSynthesize, runRouting } from '@/lib/pipeline/engine'
 import { detectCrisis, getCrisisResponse } from '@/lib/safety'
-import type { SSEEvent } from '@/types'
+import type { SSEEvent, MemoryContext } from '@/types'
 
 export const maxDuration = 300  // Vercel Pro: 最大300秒。Web検索込みで余裕を持つ
 
 export async function POST(req: Request) {
-  const { question, context, locale, userName, round = 0 } = await req.json()
+  const { question, context, locale, userName, round = 0, memoryContext } = await req.json() as {
+    question: string; context?: string; locale?: string; userName?: string; round?: number; memoryContext?: MemoryContext
+  }
 
   if (!question || typeof question !== 'string') {
     return new Response(JSON.stringify({ error: 'question is required' }), {
@@ -36,7 +38,7 @@ export async function POST(req: Request) {
         send({ type: 'stage:start', stage: 'structure', data: null, timestamp: now() })
         let structured
         try {
-          structured = await runStructure(question, context, userName)
+          structured = await runStructure(question, context, userName, memoryContext)
         } catch {
           // 構造化失敗時のフォールバック
           structured = {
@@ -100,7 +102,7 @@ export async function POST(req: Request) {
 
           // ── Stage 4: 青/統合 ────────────────────────
           send({ type: 'stage:start', stage: 'synthesize', data: null, timestamp: now() })
-          const synthesis = await runSynthesize(structured, observation.facts, deliberation.agents, verification, undefined, userName, round)
+          const synthesis = await runSynthesize(structured, observation.facts, deliberation.agents, verification, undefined, userName, round, memoryContext)
           send({ type: 'stage:complete', stage: 'synthesize', data: synthesis, timestamp: now() })
 
           // ── 完了 ────────────────────────────────────
