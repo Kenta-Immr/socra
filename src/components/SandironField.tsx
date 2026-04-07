@@ -174,7 +174,15 @@ export default function SandironField({ pipeline, fullScreen, onNodeClick }: Pro
       const data = agentMap[hat]
       if (!data) return
       const n = hatOrder.length
-      const angle = (idx / n) * Math.PI * 2 - Math.PI / 2
+      // 基本角度 + stance/intensityベースのオフセット（セッションごとに異なるパターン）
+      const baseAngle = (idx / n) * Math.PI * 2 - Math.PI / 2
+      // stanceで角度方向にシフト: support→外側へ+, oppose→内側へ-, caution→揺れ
+      const stanceOffset = data.stance === 'support' ? 0.15
+        : data.stance === 'oppose' ? -0.12
+        : 0.08 * Math.sin(data.intensity * 2.1)
+      // intensityで角度に微小な個性を付与（同じintensityでもhatごとに異なる）
+      const intensityOffset = (data.intensity / 5) * 0.18 * (idx % 2 === 0 ? 1 : -1)
+      const angle = baseAngle + stanceOffset + intensityOffset
       // intensityで軌道半径を変える — 強い意見ほど中央寄り
       // intensity 1 → 95%軌道, 3 → 75%, 5 → 55%
       const isEi = hat === 'blue'
