@@ -66,9 +66,9 @@ function AvatarShape({ def, size, phase, isThinking, isDark }: {
   isDark: boolean
 }) {
   const r = size / 2
-  const glowOpacity = isDark ? 0.35 : 0.2
+  const glowOpacity = isDark ? (def.key === 'black' ? 0.5 : 0.35) : 0.2
   const strokeWidth = isDark ? 0 : 1.5
-  const kaiVisible = def.key === 'black' ? (isThinking ? 1 : 0.15) : 1
+  const kaiVisible = def.key === 'black' ? (isThinking ? 1 : 0.35) : 1
   const lightHex = def.key === 'yellow' && !isDark ? '#D97706' : def.hex
   const meiStroke = def.key === 'white' && !isDark ? lightHex : 'none'
 
@@ -106,7 +106,7 @@ function AvatarShape({ def, size, phase, isThinking, isDark }: {
           const angle = (Math.PI / 3) * i - Math.PI / 2
           return `${r + r * 0.42 * Math.cos(angle)},${r + r * 0.42 * Math.sin(angle)}`
         }).join(' ')
-        return <polygon points={pts} fill={lightHex} fillOpacity={isDark ? 0.1 : 0.15} stroke={lightHex} strokeWidth={1.5} strokeOpacity={0.5} />
+        return <polygon points={pts} fill={lightHex} fillOpacity={isDark ? 0.15 : 0.15} stroke={isDark ? '#94A3B8' : lightHex} strokeWidth={isDark ? 2 : 1.5} strokeOpacity={isDark ? 0.7 : 0.5} />
       })()}
       {def.shape === 'sunburst' && (
         <>
