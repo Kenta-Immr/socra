@@ -12,7 +12,9 @@ import type { MemoryContext } from '@/types'
 import dynamic from 'next/dynamic'
 
 // const MindMap = dynamic(() => import('@/components/MindMap'), { ssr: false })  // fallback preserved
-const SandironField = dynamic(() => import('@/components/SandironField'), { ssr: false })
+// const SandironField = dynamic(() => import('@/components/SandironField'), { ssr: false })  // replaced by AvatarField
+const AvatarField = dynamic(() => import('@/components/AvatarField'), { ssr: false })
+import type { AvatarNode } from '@/components/AvatarField'
 import type { MindNode } from '@/components/MindMap'
 import SessionSidebar from '@/components/SessionSidebar'
 
@@ -498,7 +500,7 @@ export default function Home() {
         {/* 右: マインドマップ（PC=常時表示、モバイル=Mapタブ時） */}
         <div className={`${mobileTab === 'map' ? 'flex' : 'hidden'} md:flex flex-1 relative flex-col`} style={{ background: 'var(--bg-map)' }}>
           {(pipeline.status === 'running' || pipeline.status === 'complete') ? (
-            <SandironField pipeline={pipeline} fullScreen onNodeClick={(node) => {
+            <AvatarField pipeline={pipeline} fullScreen onNodeClick={(node: AvatarNode) => {
               setSelectedNode({
                 id: node.id, label: `${node.kanji} ${node.agentName}`, color: '#3B82F6',
                 type: 'agent', hat: node.hat, stance: node.stance, round: node.round,

@@ -36,6 +36,8 @@ export type PipelineUI = {
   // マップ成長用: 全ラウンドの累積データ
   round: number
   allRounds: RoundData[]
+  // アバターフィールド用: 現在thinking中のエージェント
+  thinkingAgents: HatColor[]
 }
 
 const STAGE_LABELS: Record<PipelineStage, string> = {
@@ -59,6 +61,7 @@ export function usePipeline() {
     error: null,
     round: 0,
     allRounds: [],
+    thinkingAgents: [],
   })
 
   const roundRef = useRef(0)
@@ -103,6 +106,7 @@ export function usePipeline() {
         error: null,
         round: currentRound + 1,
         allRounds: updatedRounds,
+        thinkingAgents: [],
       }
     })
 
@@ -153,8 +157,20 @@ export function usePipeline() {
           const event: SSEEvent = JSON.parse(line.slice(6))
 
           switch (event.type) {
-            case 'stage:start':
-              setState(prev => ({ ...prev, currentStage: event.stage! }))
+            case 'stage:start': {
+              const stageHatMap: Partial<Record<PipelineStage, HatColor>> = {
+                observe: 'white',
+                verify: 'verify' as HatColor,  // 理: HatColorに含まないが便宜上キャスト
+                synthesize: 'blue',
+              }
+              const stageHat = stageHatMap[event.stage!]
+              setState(prev => ({
+                ...prev,
+                currentStage: event.stage!,
+                thinkingAgents: stageHat && !prev.thinkingAgents.includes(stageHat)
+                  ? [...prev.thinkingAgents, stageHat]
+                  : prev.thinkingAgents,
+              }))
               addTimeline({
                 id: `stage-${event.stage}-start-${Date.now()}`,
                 type: 'system',
@@ -163,6 +179,7 @@ export function usePipeline() {
                 timestamp: event.timestamp,
               })
               break
+            }
 
             case 'stage:complete':
               if (event.stage === 'structure') {
@@ -207,6 +224,15 @@ export function usePipeline() {
                   content: syn.recommendation,
                   timestamp: event.timestamp,
                 })
+              }
+              break
+
+            case 'agent:start':
+              if (event.hat) {
+                setState(prev => ({
+                  ...prev,
+                  thinkingAgents: [...prev.thinkingAgents, event.hat as HatColor],
+                }))
               }
               break
 
@@ -380,6 +406,7 @@ export function usePipeline() {
       error: null,
       round: rounds.length,
       allRounds,
+      thinkingAgents: [],
     })
   }, [])
 
