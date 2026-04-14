@@ -44,6 +44,26 @@ export async function updateSession(id: string, rounds: unknown[]): Promise<bool
   return true
 }
 
+// セッション削除（API Route経由でサーバーサイド実行）
+export async function deleteSession(id: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/session', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      console.error('Failed to delete session:', data)
+      return false
+    }
+    return true
+  } catch (err) {
+    console.error('Failed to delete session:', err)
+    return false
+  }
+}
+
 // セッション読み込み
 export async function loadSession(id: string): Promise<SessionData | null> {
   const { data, error } = await supabase

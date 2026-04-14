@@ -297,6 +297,15 @@ export default function Home() {
             pipeline.restore(rounds)
           }
         }}
+        onDeleteSession={async (id) => {
+          const { deleteSession } = await import('@/lib/supabase')
+          const success = await deleteSession(id)
+          if (success && sessionId === id) {
+            // 現在表示中のセッションが削除された場合はリセット
+            window.location.href = '/'
+          }
+          return success
+        }}
         onNewSession={() => { window.location.href = '/' }}
         locale={locale}
         onLocaleChange={setLocale}
