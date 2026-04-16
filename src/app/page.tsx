@@ -96,14 +96,16 @@ export default function Home() {
   }, [])
 
   // 多言語
-  const [locale, setLocale] = useState<Locale>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('socra-locale') as Locale
-      if (saved && ['en', 'ja', 'zh', 'es'].includes(saved)) return saved
-    }
-    return 'en'
-  })
+  const [locale, setLocale] = useState<Locale>('en')
   const msg = t(locale)
+
+  // クライアントサイドでlocalStorageから復元（hydrationエラー防止）
+  useEffect(() => {
+    const saved = localStorage.getItem('socra-locale') as Locale
+    if (saved && ['en', 'ja', 'zh', 'es'].includes(saved)) {
+      setLocale(saved)
+    }
+  }, [])
 
   useEffect(() => {
     localStorage.setItem('socra-locale', locale)
