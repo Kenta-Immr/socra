@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { loadSession, type SessionData } from '@/lib/supabase'
 import { AGENTS } from '@/types'
 import type { HatColor } from '@/types'
@@ -26,18 +26,28 @@ function stanceColor(stance?: string): string {
 
 export default function SessionPage() {
   const params = useParams()
+  const router = useRouter()
   const id = params.id as string
   const [session, setSession] = useState<SessionData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    // 自分のセッション（localStorageに記録あり）ならトップで復元モードで開く
+    try {
+      const saved = JSON.parse(localStorage.getItem('socra-sessions') ?? '[]') as Array<{ id: string }>
+      if (saved.some(s => s.id === id)) {
+        router.replace(`/?session=${id}`)
+        return
+      }
+    } catch { /* ignore */ }
+
     loadSession(id).then(data => {
       if (data) setSession(data)
       else setError('Session not found')
     }).catch(() => setError('Failed to load session'))
       .finally(() => setLoading(false))
-  }, [id])
+  }, [id, router])
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>

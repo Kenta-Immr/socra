@@ -127,6 +127,41 @@ export default function Home() {
     return () => vv.removeEventListener('resize', handleResize)
   }, [])
 
+  // ?session=X を受け取って自分のセッションを復元
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const sid = params.get('session')
+    if (!sid) return
+    ;(async () => {
+      const { loadSession } = await import('@/lib/supabase')
+      const session = await loadSession(sid)
+      if (session) {
+        setSessionId(sid)
+        setShareUrl(`${window.location.origin}/session/${sid}`)
+        setOriginalQuestion(session.question)
+        const rounds = session.rounds as Array<{
+          question?: string
+          agents?: Array<{ hat: string; name: string; stance: string; intensity: number; reasoning: string; keyPoints: string[] }>
+          synthesis?: { recommendation: string; nextSteps: string[] }
+          verification?: { overallConsistency: number; contradictions: Array<{ hat1: string; hat2: string; description: string }> }
+        }>
+        const history = rounds.map(r => {
+          const parts: string[] = []
+          if (r.question) parts.push(`Question: ${r.question}`)
+          if (r.synthesis) parts.push(`Ei: ${r.synthesis.recommendation.slice(0, 300)}`)
+          r.agents?.forEach(a => parts.push(`${a.name}(${a.stance}): ${a.reasoning.slice(0, 100)}`))
+          return parts.join('\n')
+        })
+        setSessionHistory(history)
+        setContextPhase('done')
+        pipeline.restore(rounds)
+      }
+      // クエリパラメータを消す（リロード時の再復元防止）
+      window.history.replaceState({}, '', '/')
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     if (pipeline.status === 'complete') {
       const summaryParts: string[] = []
