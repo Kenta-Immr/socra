@@ -8,7 +8,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { t, type Locale } from '@/i18n/locales'
 import { saveSession, updateSession } from '@/lib/supabase'
 import { createClient } from '@/lib/supabase/client'
-import type { MemoryContext } from '@/types'
+import type { MemoryContext, ObservationResult } from '@/types'
 import dynamic from 'next/dynamic'
 
 // const MindMap = dynamic(() => import('@/components/MindMap'), { ssr: false })  // fallback preserved
@@ -144,6 +144,7 @@ export default function Home() {
           agents?: Array<{ hat: string; name: string; stance: string; intensity: number; reasoning: string; keyPoints: string[] }>
           synthesis?: { recommendation: string; nextSteps: string[] }
           verification?: { overallConsistency: number; contradictions: Array<{ hat1: string; hat2: string; description: string }> }
+          observation?: ObservationResult | null
         }>
         const history = rounds.map(r => {
           const parts: string[] = []
@@ -179,6 +180,7 @@ export default function Home() {
         agents: pipeline.agents.map(a => ({ hat: a.hat, name: a.name, stance: a.stance, intensity: a.intensity, reasoning: a.reasoning, keyPoints: a.keyPoints })),
         synthesis: pipeline.synthesis ? { recommendation: pipeline.synthesis.recommendation, nextSteps: pipeline.synthesis.nextSteps } : null,
         verification: pipeline.verification ? { overallConsistency: pipeline.verification.overallConsistency, contradictions: pipeline.verification.contradictions } : null,
+        observation: pipeline.observation ?? null,
       }
       if (!sessionId) {
         saveSession({ question: pipeline.structured?.original ?? '', locale, rounds: [roundData] }).then(id => {

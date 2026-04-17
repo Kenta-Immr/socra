@@ -262,6 +262,11 @@ export default function AvatarField({ pipeline, fullScreen, onNodeClick }: Props
   // Derive visible avatars from pipeline state
   const visibleKeys = useMemo(() => {
     const keys = new Set<string>()
+    // 完了状態（復元含む）: 全7体を常に表示
+    if (pipeline.status === 'complete') {
+      AVATAR_DEFS.forEach(d => keys.add(d.key))
+      return keys
+    }
     // thinkingAgents tracks agent:start and stage:start events
     for (const hat of pipeline.thinkingAgents) {
       keys.add(hat)
@@ -277,7 +282,7 @@ export default function AvatarField({ pipeline, fullScreen, onNodeClick }: Props
     // Synthesis done → blue visible
     if (pipeline.synthesis) keys.add('blue')
     return keys
-  }, [pipeline.thinkingAgents, pipeline.agents, pipeline.observation, pipeline.verification, pipeline.synthesis])
+  }, [pipeline.status, pipeline.thinkingAgents, pipeline.agents, pipeline.observation, pipeline.verification, pipeline.synthesis])
 
   // Phase transitions (SSE-driven)
   useEffect(() => {

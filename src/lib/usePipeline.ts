@@ -287,6 +287,7 @@ export function usePipeline() {
     agents?: Array<{ hat: string; name: string; stance: string; intensity: number; reasoning: string; keyPoints: string[] }>
     synthesis?: { recommendation: string; nextSteps: string[] }
     verification?: { overallConsistency: number; contradictions: Array<{ hat1: string; hat2: string; description: string }> }
+    observation?: ObservationResult | null
   }>) => {
     const timeline: TimelineEntry[] = []
     const allRounds: RoundData[] = []
@@ -379,7 +380,7 @@ export function usePipeline() {
       currentStage: null,
       timeline,
       structured: null,
-      observation: null,
+      observation: lastRound?.observation ?? null,
       agents: lastAgents,
       verification: lastRound?.verification ? {
         overallConsistency: lastRound.verification.overallConsistency,
