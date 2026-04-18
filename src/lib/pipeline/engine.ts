@@ -181,7 +181,7 @@ export async function runVerify(
         severity: z.enum(['critical', 'moderate', 'minor']),
       })),
       factGaps: z.array(z.string()),
-      overallConsistency: z.number().min(0).max(100),
+      overallConsistency: z.number().describe('論理整合性スコア（0〜100の整数値）'),
     }),
     prompt: prompts.verify(sq, agents),
   })
