@@ -145,7 +145,7 @@ export async function runDeliberate(
 
   const agentSchema = z.object({
     stance: z.enum(['support', 'caution', 'oppose']),
-    intensity: z.number().min(1).max(5),
+    intensity: z.number().describe('スタンスの強度（1〜5の整数）'),
     reasoning: z.string(),
     keyPoints: z.array(z.string()).max(5),
   })
