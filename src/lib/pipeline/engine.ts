@@ -349,7 +349,7 @@ export async function runFocusPoint(
 }
 
 // ── v0.2: 越境判定（軽量モデル・各エージェント発言後）──────
-// デフォルトの越境候補マップ: この発言をした色 → 越境候補の色
+// デフォルトの越境候補マップ: この発言をした色 → 越境候補の色（フォールバック）
 const DEFAULT_CROSS_BORDER_MAP: Partial<Record<HatColor, HatColor>> = {
   red: 'green',     // 情 → 創（感情×創造）
   black: 'yellow',  // 戒 → 光（リスク×価値）
@@ -357,47 +357,81 @@ const DEFAULT_CROSS_BORDER_MAP: Partial<Record<HatColor, HatColor>> = {
   green: 'black',   // 創 → 戒（創造×リスク）
 }
 
+// エージェント名（英・漢字）と HatColor のマッピング（判断エージェント4体のみ）
+const AGENT_NAME_PATTERNS: Array<[RegExp, HatColor]> = [
+  [/\bJo\b/i, 'red'],
+  [/情/, 'red'],
+  [/\bKai\b/i, 'black'],
+  [/戒/, 'black'],
+  [/\bKo\b/i, 'yellow'],
+  [/光/, 'yellow'],
+  [/\bSo\b/i, 'green'],
+  [/創/, 'green'],
+]
+
+// 発言中に明示参照されている他エージェントの HatColor を返す（話者自身は除外）
+function detectNameReferences(speech: string, fromHat: HatColor): HatColor[] {
+  const found = new Set<HatColor>()
+  for (const [pattern, hat] of AGENT_NAME_PATTERNS) {
+    if (hat !== fromHat && pattern.test(speech)) {
+      found.add(hat)
+    }
+  }
+  return Array.from(found)
+}
+
 export async function runCrossBorder(
   fromHat: HatColor,
   focusQuestion: string,
   lastSpeech: string,
 ): Promise<CrossBorderRecord | null> {
-  const toHat = DEFAULT_CROSS_BORDER_MAP[fromHat]
-  if (!toHat) return null
+  // 候補リスト: 名前参照エージェントを優先し、固定マップをフォールバックとして追加
+  const nameReferenced = detectNameReferences(lastSpeech, fromHat)
+  const fixedTarget = DEFAULT_CROSS_BORDER_MAP[fromHat]
+  const candidates = Array.from(
+    new Set<HatColor>([...nameReferenced, ...(fixedTarget ? [fixedTarget] : [])])
+  )
 
-  try {
-    const { text } = await generateText({
-      model: models.crossBorder,
-      prompt: prompts.crossBorder(fromHat, toHat, focusQuestion, lastSpeech),
-    })
+  if (candidates.length === 0) return null
 
-    const jsonMatch = text.match(/```json\s*([\s\S]*?)```/) ?? text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) return null
+  // 各候補を順に試行し、最初に L2/L3 を返したものを採用
+  for (const toHat of candidates) {
+    try {
+      const { text } = await generateText({
+        model: models.crossBorder,
+        prompt: prompts.crossBorder(fromHat, toHat, focusQuestion, lastSpeech),
+      })
 
-    const jsonStr = jsonMatch[1] ?? jsonMatch[0]
-    const parsed = JSON.parse(jsonStr) as {
-      shouldCross?: boolean
-      level?: 'L2' | 'L3' | null
-      content?: string | null
-      reason?: string
+      const jsonMatch = text.match(/```json\s*([\s\S]*?)```/) ?? text.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) continue
+
+      const jsonStr = jsonMatch[1] ?? jsonMatch[0]
+      const parsed = JSON.parse(jsonStr) as {
+        shouldCross?: boolean
+        level?: 'L2' | 'L3' | null
+        content?: string | null
+        reason?: string
+      }
+
+      if (!parsed.shouldCross) continue
+      if (parsed.level !== 'L2' && parsed.level !== 'L3') continue
+      if (!parsed.content) continue
+
+      return {
+        id: `cb_${Date.now()}_${toHat}`,
+        fromHat,
+        toHat,
+        level: parsed.level,
+        content: parsed.content,
+        reason: parsed.reason ?? '',
+        timestamp: new Date().toISOString(),
+      }
+    } catch {
+      continue
     }
-
-    if (!parsed.shouldCross) return null
-    if (parsed.level !== 'L2' && parsed.level !== 'L3') return null
-    if (!parsed.content) return null
-
-    return {
-      id: `cb_${Date.now()}_${toHat}`,
-      fromHat,
-      toHat,
-      level: parsed.level,
-      content: parsed.content,
-      reason: parsed.reason ?? '',
-      timestamp: new Date().toISOString(),
-    }
-  } catch {
-    return null
   }
+
+  return null
 }
 
 // ── v0.2: 順次deliberate（フォーカスポイント＋越境対応）──────
@@ -463,11 +497,15 @@ export async function runDeliberateSequential(
     onEvent?.onAgentComplete?.(agentResponse)
 
     // 越境判定（最後のエージェントを除く・上限3回）
+    // reasoning + keyPoints を渡すことで名前参照の検出精度を向上
     if (i < order.length - 1 && crossBorders.length < CROSS_BORDER_LIMIT_PER_FP) {
+      const speechContext = agentResponse.keyPoints.length > 0
+        ? `${agentResponse.reasoning}\n\nKey points: ${agentResponse.keyPoints.join('; ')}`
+        : agentResponse.reasoning
       const record = await runCrossBorder(
         hat,
         focusPoint.question,
-        agentResponse.reasoning,
+        speechContext,
       )
       if (record) {
         crossBorders.push(record)

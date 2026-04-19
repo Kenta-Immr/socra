@@ -572,22 +572,38 @@ CRITICAL: Respond in the SAME LANGUAGE as the user's question. Output ONLY the J
     toHat: HatColor,
     focusQuestion: string,
     lastSpeech: string,
-  ) => `You are a fast quality-gate for cross-border interventions in a structured deliberation.
+  ) => {
+    const personaMap: Partial<Record<HatColor, { name: string; role: string }>> = {
+      red:    { name: 'Jo (情)',  role: 'intuition & emotion — trusts gut feeling as primary information; phenomenological perspective' },
+      black:  { name: 'Kai (戒)', role: 'risk & critical analysis — surfaces worst-case scenarios and hidden assumptions; methodical skepticism' },
+      yellow: { name: 'Ko (光)',  role: 'opportunity & strategic optimism — finds concrete upside and actionable value; pragmatist' },
+      green:  { name: 'So (創)',  role: 'creative alternatives — breaks false dichotomies and proposes unexpected third paths; constructivist' },
+    }
+    const from = personaMap[fromHat] ?? { name: fromHat, role: 'judgment agent' }
+    const to = personaMap[toHat] ?? { name: toHat, role: 'judgment agent' }
+
+    return `You are a fast quality-gate for cross-border interventions in a structured deliberation.
+
+## Agents
+- **${from.name}** (speaker): ${from.role}
+- **${to.name}** (potential intervenor): ${to.role}
 
 ## Setup
-- Agent "${fromHat}" just spoke about the focus point.
-- Agent "${toHat}" is considering a cross-border intervention (interrupting from an unexpected angle).
+- ${from.name} just spoke about the focus point.
+- ${to.name} is considering a cross-border intervention (interjecting from an unexpected angle).
 - Focus point: "${focusQuestion}"
-- Last speech by ${fromHat}: "${lastSpeech}"
+- Last speech by ${from.name}: "${lastSpeech}"
 
 ## Your Task
-Decide if ${toHat} should cross the border to interject. Apply the L1/L2/L3 quality gate:
+Decide if ${to.name} should cross the border to interject. Apply the L1/L2/L3 quality gate:
 
-- **L1 (reject)**: Noise. The user already considered this. Surface rephrasing. Shallow.
-- **L2 (accept)**: Insight. Adds a perspective the user had but hadn't articulated. Sharpens.
-- **L3 (accept)**: Transformation. Shakes the premise itself. Changes the map.
+- **L1 (reject)**: Noise. Surface rephrasing. Nothing new from ${to.name}'s specific perspective.
+- **L2 (accept)**: Insight. ${to.name} can add something that sharpens the picture from their unique angle.
+- **L3 (accept)**: Transformation. ${to.name} can challenge a premise that changes the entire map.
 
 Only L2 and L3 should cross. L1 must be rejected.
+
+Key signal: if ${from.name}'s speech explicitly references ${to.name} or directly touches their domain (${to.role.split('—')[0].trim()}), that is a strong indicator for L2+.
 
 ## Output format (JSON only)
 \`\`\`json
@@ -604,5 +620,6 @@ Only L2 and L3 should cross. L1 must be rejected.
 - If shouldCross is true: content must be a SINGLE sentence ending in a question mark
 - content must be in the SAME LANGUAGE as the last speech
 
-Output ONLY the JSON.`,
+Output ONLY the JSON.`
+  },
 }
