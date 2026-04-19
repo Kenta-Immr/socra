@@ -1,6 +1,6 @@
 // Socra パイプライン SSE エンドポイント
 // 5段パイプラインを順次実行し、各ステージの結果をSSEでストリーミング
-import { runStructure, runObserve, runDeliberate, runDeliberateSequential, runVerify, runSynthesize, runRouting, runFocusPoint } from '@/lib/pipeline/engine'
+import { runStructure, runObserve, runDeliberateSequential, runVerify, runSynthesize, runRouting, runFocusPoint } from '@/lib/pipeline/engine'
 import { detectCrisis, getCrisisResponse } from '@/lib/safety'
 import type { SSEEvent, MemoryContext } from '@/types'
 

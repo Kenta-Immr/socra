@@ -6,7 +6,6 @@
 
 import type {
   FocusPoint,
-  FocusPointProposal,
   DiscussionPhase,
   AgentResponse,
   CrossBorderRecord,
@@ -17,7 +16,6 @@ import { AGENTS } from '@/types'
 
 interface RightPaneProps {
   focusPoint: FocusPoint | null
-  focusProposal: FocusPointProposal | null
   discussionPhase: DiscussionPhase | null
   agents: AgentResponse[]
   crossBorders: CrossBorderRecord[]
@@ -28,7 +26,6 @@ const CROSS_BORDER_LIMIT = 3
 
 export function RightPane({
   focusPoint,
-  focusProposal: _focusProposal,
   discussionPhase,
   agents,
   crossBorders,
