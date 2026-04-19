@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     const { object } = await generateObject({
       model: anthropic('claude-sonnet-4-6'),
       schema: z.object({
-        questions: z.array(z.string()).max(3).describe('Up to 3 context questions'),
+        questions: z.array(z.string()).describe('Up to 3 context questions'),
       }),
       prompt: `You are Ei (叡), the mentor of Socra — an AI decision-making team.
 

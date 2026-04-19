@@ -73,7 +73,7 @@ export async function runStructure(question: string, userContext?: string, userN
     model: models.structure,
     schema: z.object({
       clarified: z.string().describe('明確化された問い'),
-      context: z.array(z.string()).max(3).describe('判断に必要な文脈情報'),
+      context: z.array(z.string()).describe('判断に必要な文脈情報（最大3個）'),
       stakeholders: z.array(z.string()).describe('影響を受ける関係者'),
       timeHorizon: z.string().describe('判断の時間軸'),
       reversibility: z.enum(['reversible', 'partially', 'irreversible']),
@@ -150,7 +150,7 @@ export async function runDeliberate(
     stance: z.enum(['support', 'caution', 'oppose']),
     intensity: z.number().describe('スタンスの強度（1〜5の整数）'),
     reasoning: z.string(),
-    keyPoints: z.array(z.string()).max(5),
+    keyPoints: z.array(z.string()).describe('キーポイント（最大5個）'),
   })
 
   // 4体を並列実行
@@ -423,7 +423,7 @@ export async function runDeliberateSequential(
     stance: z.enum(['support', 'caution', 'oppose']),
     intensity: z.number().describe('スタンスの強度（1〜5の整数）'),
     reasoning: z.string(),
-    keyPoints: z.array(z.string()).max(5),
+    keyPoints: z.array(z.string()).describe('キーポイント（最大5個）'),
   })
 
   for (let i = 0; i < order.length; i++) {
