@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef } from 'react'
-import type { SSEEvent, PipelineStage, AgentResponse, StructuredQuestion, ObservationResult, VerificationResult, SynthesisResult, HatColor } from '@/types'
+import type { SSEEvent, PipelineStage, AgentResponse, StructuredQuestion, ObservationResult, VerificationResult, SynthesisResult, HatColor, FocusPoint, FocusPointProposal, CrossBorderRecord, DiscussionPhase } from '@/types'
 
 export type TimelineEntry = {
   id: string
@@ -38,6 +38,11 @@ export type PipelineUI = {
   allRounds: RoundData[]
   // アバターフィールド用: 現在thinking中のエージェント
   thinkingAgents: HatColor[]
+  // v0.2: フォーカスポイント・越境・議論フェーズ
+  focusProposal: FocusPointProposal | null
+  focusPoint: FocusPoint | null
+  discussionPhase: DiscussionPhase | null
+  crossBorders: CrossBorderRecord[]
 }
 
 const STAGE_LABELS: Record<PipelineStage, string> = {
@@ -62,6 +67,10 @@ export function usePipeline() {
     round: 0,
     allRounds: [],
     thinkingAgents: [],
+    focusProposal: null,
+    focusPoint: null,
+    discussionPhase: null,
+    crossBorders: [],
   })
 
   const roundRef = useRef(0)
@@ -107,6 +116,10 @@ export function usePipeline() {
         round: currentRound + 1,
         allRounds: updatedRounds,
         thinkingAgents: [],
+        focusProposal: null,
+        focusPoint: null,
+        discussionPhase: 'pre_focus' as DiscussionPhase,
+        crossBorders: [],
       }
     })
 
@@ -262,6 +275,35 @@ export function usePipeline() {
               const errData = event.data as { error: string }
               setState(prev => ({ ...prev, status: 'error', error: errData.error }))
               break
+
+            // v0.2: フォーカスポイント・越境・議論フェーズ
+            case 'focus:proposed':
+              if (event.focusProposal) {
+                const proposal = event.focusProposal
+                setState(prev => ({ ...prev, focusProposal: proposal }))
+              }
+              break
+
+            case 'focus:decided':
+              if (event.focusPoint) {
+                const fp = event.focusPoint
+                setState(prev => ({ ...prev, focusPoint: fp }))
+              }
+              break
+
+            case 'phase:transition':
+              if (event.phase) {
+                const newPhase = event.phase
+                setState(prev => ({ ...prev, discussionPhase: newPhase }))
+              }
+              break
+
+            case 'cross_border:triggered':
+              if (event.crossBorder) {
+                const cb = event.crossBorder
+                setState(prev => ({ ...prev, crossBorders: [...prev.crossBorders, cb] }))
+              }
+              break
           }
         }
       }
@@ -408,6 +450,10 @@ export function usePipeline() {
       round: rounds.length,
       allRounds,
       thinkingAgents: [],
+      focusProposal: null,
+      focusPoint: null,
+      discussionPhase: null,
+      crossBorders: [],
     })
   }, [])
 
