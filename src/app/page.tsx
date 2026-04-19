@@ -673,18 +673,16 @@ export default function Home() {
         </button>
       </div>
 
-      {/* RightPane — 焦点深度マップ型（デスクトップのみ、セッション実行中/完了時に表示） */}
-      {(pipeline.status === 'running' || pipeline.status === 'complete') && (
-        <aside className="hidden xl:flex fixed right-0 top-0 w-80 h-[100dvh] z-30 shadow-2xl">
-          <RightPane
-            focusPoint={pipeline.focusPoint}
-            discussionPhase={pipeline.discussionPhase}
-            agents={pipeline.agents}
-            crossBorders={pipeline.crossBorders}
-            synthesis={pipeline.synthesis}
-          />
-        </aside>
-      )}
+      {/* RightPane — 焦点深度マップ型（デスクトップのみ・常時表示） */}
+      <aside data-rightpane="v0.2" className="hidden xl:flex fixed right-0 top-0 w-80 h-[100dvh] z-30 shadow-2xl">
+        <RightPane
+          focusPoint={pipeline.focusPoint}
+          discussionPhase={pipeline.discussionPhase}
+          agents={pipeline.agents}
+          crossBorders={pipeline.crossBorders}
+          synthesis={pipeline.synthesis}
+        />
+      </aside>
     </main>
   )
 }
