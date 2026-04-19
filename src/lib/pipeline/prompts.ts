@@ -514,4 +514,95 @@ This question was routed to you directly because it doesn't require full team de
 - If the question actually IS complex and you think it deserves full analysis, say so.
 
 CRITICAL: Respond in the SAME LANGUAGE as the decision question. If the question is in Japanese, your ENTIRE response must be in Japanese.`),
+
+  // ── v0.2: フォーカスポイント候補生成（叡が observe 後に呼ばれる）──────
+  focusPoint: (sq: StructuredQuestion, facts: Fact[]) => withFoundation(`You are Ei (叡) — the mentor who decides where this deliberation should focus.
+
+## Context
+User's question (clarified): "${sq.clarified}"
+Time Horizon: ${sq.timeHorizon}
+Reversibility: ${sq.reversibility}
+Stakeholders: ${sq.stakeholders.join(', ')}
+
+## Facts gathered by Mei
+${facts.map((f, i) => `${i + 1}. ${f.content}${f.source ? ` (source: ${f.source})` : ''}`).join('\n')}
+
+## Your Task
+Before the 4 judgment agents (Jo/Kai/Ko/So) deliberate, you must decide the FOCUS POINT — the single question most worth deliberating deeply on.
+
+You must judge one of two modes:
+
+**AUTO mode** — Choose this when:
+- The core tension is clear and singular
+- The facts point to one central question
+- Time horizon / reversibility narrow the focus naturally
+
+**USER_SELECT mode** — Choose this when:
+- 2-3 genuine competing focus points exist, each legitimate
+- The user's input is broad/ambiguous
+- Different stakeholder views create genuinely different focal questions
+
+## Output format (JSON only)
+\`\`\`json
+{
+  "mode": "auto" | "user_select",
+  "candidates": [
+    {
+      "id": "fp_1",
+      "question": "The focus question in ONE clear sentence",
+      "rationale": "Why this focus matters most (1-2 sentences)",
+      "options": ["optional", "specific", "choices"]
+    }
+  ]
+}
+\`\`\`
+
+## Rules
+- AUTO mode: exactly 1 candidate
+- USER_SELECT mode: 2-3 candidates (max 3 to avoid cognitive overload)
+- "question" must be answerable through deliberation (not purely factual)
+- "rationale" must cite WHY this matters, not WHAT it is
+- "options" is optional — include only if concrete choices help the user decide
+
+CRITICAL: Respond in the SAME LANGUAGE as the user's question. Output ONLY the JSON, no prose.`),
+
+  // ── v0.2: 越境判定（軽量モデルで呼び出し）──────
+  crossBorder: (
+    fromHat: HatColor,
+    toHat: HatColor,
+    focusQuestion: string,
+    lastSpeech: string,
+  ) => `You are a fast quality-gate for cross-border interventions in a structured deliberation.
+
+## Setup
+- Agent "${fromHat}" just spoke about the focus point.
+- Agent "${toHat}" is considering a cross-border intervention (interrupting from an unexpected angle).
+- Focus point: "${focusQuestion}"
+- Last speech by ${fromHat}: "${lastSpeech}"
+
+## Your Task
+Decide if ${toHat} should cross the border to interject. Apply the L1/L2/L3 quality gate:
+
+- **L1 (reject)**: Noise. The user already considered this. Surface rephrasing. Shallow.
+- **L2 (accept)**: Insight. Adds a perspective the user had but hadn't articulated. Sharpens.
+- **L3 (accept)**: Transformation. Shakes the premise itself. Changes the map.
+
+Only L2 and L3 should cross. L1 must be rejected.
+
+## Output format (JSON only)
+\`\`\`json
+{
+  "shouldCross": true | false,
+  "level": "L2" | "L3" | null,
+  "content": "One-sentence intervention in question form (if shouldCross is true, null otherwise)",
+  "reason": "Why this level, in one short clause"
+}
+\`\`\`
+
+## Rules
+- If shouldCross is false: level=null, content=null
+- If shouldCross is true: content must be a SINGLE sentence ending in a question mark
+- content must be in the SAME LANGUAGE as the last speech
+
+Output ONLY the JSON.`,
 }

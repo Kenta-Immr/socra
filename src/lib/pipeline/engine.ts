@@ -15,6 +15,9 @@ import type {
   HatColor,
   Fact,
   MemoryContext,
+  FocusPoint,
+  FocusPointProposal,
+  CrossBorderRecord,
 } from '@/types'
 
 // ── ルーティング判断（叡が判断）──────────────────────
@@ -273,4 +276,205 @@ function parseSynthesis(text: string, agents: AgentResponse[]): SynthesisResult 
     },
     radarChart: { axes: radarAxes, pattern },
   }
+}
+
+// ============================================================
+// v0.2 追加：フォーカスポイント・越境・順次deliberate
+// 2026-04-19 研太さん指示で追加。既存 runDeliberate（並列）は残存。
+// ============================================================
+
+// ── v0.2: フォーカスポイント候補生成（observe後・deliberate前）──────
+export async function runFocusPoint(
+  sq: StructuredQuestion,
+  facts: Fact[]
+): Promise<FocusPointProposal> {
+  const { text } = await generateText({
+    model: models.focusPoint,
+    prompt: prompts.focusPoint(sq, facts),
+  })
+
+  // JSONブロック or 生JSONを抽出
+  const jsonMatch = text.match(/```json\s*([\s\S]*?)```/) ?? text.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) {
+    // フォールバック: 単一候補として問いそのものを返す
+    return {
+      mode: 'auto',
+      candidates: [{
+        id: 'fp_fallback',
+        question: sq.clarified,
+        rationale: 'フォーカス解析に失敗したため、構造化された問いをそのまま採用しました',
+        proposedAt: new Date().toISOString(),
+      }],
+    }
+  }
+
+  try {
+    const jsonStr = jsonMatch[1] ?? jsonMatch[0]
+    const parsed = JSON.parse(jsonStr)
+    const rawCandidates = Array.isArray(parsed.candidates) ? parsed.candidates : []
+
+    const candidates: FocusPoint[] = rawCandidates.slice(0, 3).map((c: { id?: string; question?: string; rationale?: string; options?: string[] }, i: number) => ({
+      id: c.id ?? `fp_${i + 1}`,
+      question: c.question ?? '',
+      rationale: c.rationale ?? '',
+      options: c.options,
+      proposedAt: new Date().toISOString(),
+    })).filter((c: FocusPoint) => c.question.length > 0)
+
+    if (candidates.length === 0) {
+      return {
+        mode: 'auto',
+        candidates: [{
+          id: 'fp_fallback',
+          question: sq.clarified,
+          rationale: '候補生成に失敗したため、構造化された問いをそのまま採用しました',
+          proposedAt: new Date().toISOString(),
+        }],
+      }
+    }
+
+    const mode = parsed.mode === 'user_select' && candidates.length >= 2 ? 'user_select' : 'auto'
+    return { mode, candidates: mode === 'auto' ? candidates.slice(0, 1) : candidates }
+  } catch {
+    return {
+      mode: 'auto',
+      candidates: [{
+        id: 'fp_fallback',
+        question: sq.clarified,
+        rationale: 'JSONパース失敗のフォールバック',
+        proposedAt: new Date().toISOString(),
+      }],
+    }
+  }
+}
+
+// ── v0.2: 越境判定（軽量モデル・各エージェント発言後）──────
+// デフォルトの越境候補マップ: この発言をした色 → 越境候補の色
+const DEFAULT_CROSS_BORDER_MAP: Partial<Record<HatColor, HatColor>> = {
+  red: 'green',     // 情 → 創（感情×創造）
+  black: 'yellow',  // 戒 → 光（リスク×価値）
+  yellow: 'black',  // 光 → 戒（価値×リスク）
+  green: 'black',   // 創 → 戒（創造×リスク）
+}
+
+export async function runCrossBorder(
+  fromHat: HatColor,
+  focusQuestion: string,
+  lastSpeech: string,
+): Promise<CrossBorderRecord | null> {
+  const toHat = DEFAULT_CROSS_BORDER_MAP[fromHat]
+  if (!toHat) return null
+
+  try {
+    const { text } = await generateText({
+      model: models.crossBorder,
+      prompt: prompts.crossBorder(fromHat, toHat, focusQuestion, lastSpeech),
+    })
+
+    const jsonMatch = text.match(/```json\s*([\s\S]*?)```/) ?? text.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) return null
+
+    const jsonStr = jsonMatch[1] ?? jsonMatch[0]
+    const parsed = JSON.parse(jsonStr) as {
+      shouldCross?: boolean
+      level?: 'L2' | 'L3' | null
+      content?: string | null
+      reason?: string
+    }
+
+    if (!parsed.shouldCross) return null
+    if (parsed.level !== 'L2' && parsed.level !== 'L3') return null
+    if (!parsed.content) return null
+
+    return {
+      id: `cb_${Date.now()}_${toHat}`,
+      fromHat,
+      toHat,
+      level: parsed.level,
+      content: parsed.content,
+      reason: parsed.reason ?? '',
+      timestamp: new Date().toISOString(),
+    }
+  } catch {
+    return null
+  }
+}
+
+// ── v0.2: 順次deliberate（フォーカスポイント＋越境対応）──────
+// 既存 runDeliberate（並列）は保持。新規APIとして並立。
+const CROSS_BORDER_LIMIT_PER_FP = 3
+
+export async function runDeliberateSequential(
+  sq: StructuredQuestion,
+  facts: Fact[],
+  focusPoint: FocusPoint,
+  onEvent?: {
+    onAgentStart?: (hat: HatColor) => void
+    onAgentComplete?: (agent: AgentResponse) => void
+    onCrossBorder?: (record: CrossBorderRecord) => void
+  },
+): Promise<{ agents: AgentResponse[]; crossBorders: CrossBorderRecord[] }> {
+  type JudgmentHat = 'red' | 'black' | 'yellow' | 'green'
+  const order: JudgmentHat[] = ['red', 'black', 'yellow', 'green']
+  const agents: AgentResponse[] = []
+  const crossBorders: CrossBorderRecord[] = []
+
+  const agentSchema = z.object({
+    stance: z.enum(['support', 'caution', 'oppose']),
+    intensity: z.number().describe('スタンスの強度（1〜5の整数）'),
+    reasoning: z.string(),
+    keyPoints: z.array(z.string()).max(5),
+  })
+
+  for (let i = 0; i < order.length; i++) {
+    const hat = order[i]
+    onEvent?.onAgentStart?.(hat)
+
+    // 前エージェントの発言＋フォーカスポイントをコンテキストに追加
+    const previousContext = agents.length > 0
+      ? `\n\n## Previous speakers in this deliberation\n${
+          agents.map(a => `- **${a.name} (${a.hat})** [${a.stance}, intensity ${a.intensity}]: ${a.reasoning}`).join('\n')
+        }${
+          crossBorders.length > 0
+            ? `\n\n## Cross-border interventions so far\n${
+                crossBorders.map(cb => `- **${cb.toHat}** challenged **${cb.fromHat}** (${cb.level}): ${cb.content}`).join('\n')
+              }`
+            : ''
+        }`
+      : ''
+    const focusContext = `\n\n## Focus Point (stay focused on this)\n**${focusPoint.question}**\n${focusPoint.rationale}`
+
+    const basePrompt = prompts.deliberate(hat, sq, facts)
+    const fullPrompt = basePrompt + previousContext + focusContext
+
+    const { object } = await generateObject({
+      model: models[hat] as typeof models.red,
+      schema: agentSchema,
+      prompt: fullPrompt,
+    })
+
+    const agentResponse: AgentResponse = {
+      hat,
+      name: AGENTS[hat].name,
+      model: 'claude',
+      ...object,
+    }
+    agents.push(agentResponse)
+    onEvent?.onAgentComplete?.(agentResponse)
+
+    // 越境判定（最後のエージェントを除く・上限3回）
+    if (i < order.length - 1 && crossBorders.length < CROSS_BORDER_LIMIT_PER_FP) {
+      const record = await runCrossBorder(
+        hat,
+        focusPoint.question,
+        agentResponse.reasoning,
+      )
+      if (record) {
+        crossBorders.push(record)
+        onEvent?.onCrossBorder?.(record)
+      }
+    }
+  }
+
+  return { agents, crossBorders }
 }

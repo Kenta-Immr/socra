@@ -22,4 +22,8 @@ export const models = {
   verify: openai('gpt-5.4'),
   // Stage 4: 青/統合（叡）— Claude Opus 4.7（最重要ステージ・最高推論）
   synthesize: anthropic('claude-opus-4-7'),
+  // v0.2: フォーカスポイント候補生成（叡の追加役割）— Opus 4.7（研太さん指示で固定）
+  focusPoint: anthropic('claude-opus-4-7'),
+  // v0.2: 越境判定（軽量・速度優先）— Haiku 4.5
+  crossBorder: anthropic('claude-haiku-4-5-20251001'),
 } as const
