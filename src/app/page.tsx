@@ -17,7 +17,6 @@ const AvatarField = dynamic(() => import('@/components/AvatarField'), { ssr: fal
 import type { AvatarNode } from '@/components/AvatarField'
 import type { MindNode } from '@/components/MindMap'
 import SessionSidebar from '@/components/SessionSidebar'
-import { RightPane } from '@/components/RightPane'
 
 // ── 色ヘルパー ───────────────────────────────────────
 function hatColor(hat?: string): string {
@@ -673,16 +672,7 @@ export default function Home() {
         </button>
       </div>
 
-      {/* RightPane — 焦点深度マップ型（デスクトップのみ・常時表示） */}
-      <aside data-rightpane="v0.2" className="hidden xl:flex fixed right-0 top-0 w-80 h-[100dvh] z-30 shadow-2xl">
-        <RightPane
-          focusPoint={pipeline.focusPoint}
-          discussionPhase={pipeline.discussionPhase}
-          agents={pipeline.agents}
-          crossBorders={pipeline.crossBorders}
-          synthesis={pipeline.synthesis}
-        />
-      </aside>
+      {/* RightPane廃止（2026-04-19 設計転換）— 左ペイン+中央AvatarFieldに一元化 */}
     </main>
   )
 }

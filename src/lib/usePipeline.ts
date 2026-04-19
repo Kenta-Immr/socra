@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef } from 'react'
-import type { SSEEvent, PipelineStage, AgentResponse, StructuredQuestion, ObservationResult, VerificationResult, SynthesisResult, HatColor, FocusPoint, FocusPointProposal, CrossBorderRecord, DiscussionPhase } from '@/types'
+import type { SSEEvent, PipelineStage, AgentResponse, StructuredQuestion, ObservationResult, VerificationResult, SynthesisResult, HatColor, FocusPoint, FocusPointProposal, CrossBorderRecord, DiscussionPhase, ConflictEdge } from '@/types'
 
 export type TimelineEntry = {
   id: string
@@ -43,6 +43,8 @@ export type PipelineUI = {
   focusPoint: FocusPoint | null
   discussionPhase: DiscussionPhase | null
   crossBorders: CrossBorderRecord[]
+  // v0.3: AvatarField蓄積用のコンフリクト線（2026-04-19 深設計）
+  conflictEdges: ConflictEdge[]
 }
 
 const STAGE_LABELS: Record<PipelineStage, string> = {
@@ -71,6 +73,7 @@ export function usePipeline() {
     focusPoint: null,
     discussionPhase: null,
     crossBorders: [],
+    conflictEdges: [],
   })
 
   const roundRef = useRef(0)
@@ -120,6 +123,7 @@ export function usePipeline() {
         focusPoint: null,
         discussionPhase: 'pre_focus' as DiscussionPhase,
         crossBorders: [],
+        conflictEdges: [],
       }
     })
 
@@ -301,7 +305,23 @@ export function usePipeline() {
             case 'cross_border:triggered':
               if (event.crossBorder) {
                 const cb = event.crossBorder
-                setState(prev => ({ ...prev, crossBorders: [...prev.crossBorders, cb] }))
+                // v0.3: 越境記録を conflictEdges にも蓄積（AvatarField用）
+                // L2/L3のみ（L1は深設計で線を引かない）
+                const newEdge: ConflictEdge = {
+                  id: cb.id,
+                  fromHat: cb.fromHat,
+                  toHat: cb.toHat,
+                  level: cb.level,
+                  content: cb.content,
+                  reason: cb.reason,
+                  timestamp: cb.timestamp,
+                  referencedCount: 0,
+                }
+                setState(prev => ({
+                  ...prev,
+                  crossBorders: [...prev.crossBorders, cb],
+                  conflictEdges: [...prev.conflictEdges, newEdge],
+                }))
               }
               break
           }
@@ -454,6 +474,7 @@ export function usePipeline() {
       focusPoint: null,
       discussionPhase: null,
       crossBorders: [],
+      conflictEdges: [],
     })
   }, [])
 

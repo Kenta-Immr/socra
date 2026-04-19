@@ -239,6 +239,21 @@ export interface CrossBorderRecord {
 
 export type DiscussionPhase = 'pre_focus' | 'focused' | 'converging'
 
+// ── v0.3: コンフリクト線（AvatarField蓄積用） ──────────────
+// 2026-04-19 決定: 深のTOC設計に基づき「コンフリクト線のみ」を記録
+// 3条件: ①明示的参照 ②異なる結論 ③L2以上の品質
+export interface ConflictEdge {
+  id: string
+  fromHat: HatColor      // 越境元（反論を投げたエージェント）
+  toHat: HatColor        // 越境先（反論された発言の主）
+  level: 'L2' | 'L3'     // L1は線を引かない
+  content: string        // 越境内容
+  reason: string         // なぜ反論するか
+  timestamp: string
+  // 影響度計算用: 後続エージェントがこのエッジを参照した回数
+  referencedCount: number
+}
+
 // ── SSE イベント ──────────────────────────────────────
 export type SSEEventType =
   | 'stage:start'
