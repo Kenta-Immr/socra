@@ -4,7 +4,7 @@
 
 Most AI tools give you one answer. Socra gives you **7 perspectives** — then asks *you* what you'll do next.
 
-**[Live Demo](https://socra-seven.vercel.app)** | AI Agent Olympics Hackathon 2026
+**[Live Demo](https://socra-nine.vercel.app)** | AI Agent Olympics Hackathon 2026
 
 ---
 
