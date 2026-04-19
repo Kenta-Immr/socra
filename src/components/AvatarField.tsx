@@ -52,7 +52,9 @@ const AVATAR_DEFS: AvatarDef[] = [
 ]
 
 // Order in which avatars appear in the arc
-const ARC_ORDER = ['white', 'red', 'black', 'yellow', 'green', 'verify', 'blue']
+// v0.3 2026-04-19: 叡（blue）は中央に固定（通過点・線を持たない）→ 弧は6体のみ
+const ARC_ORDER = ['white', 'red', 'black', 'yellow', 'green', 'verify']
+const CENTER_KEY = 'blue'  // 叡は中央固定
 
 // ============================================================
 // Shape components
@@ -383,12 +385,14 @@ export default function AvatarField({ pipeline, fullScreen, onNodeClick }: Props
 
   // v0.3 2026-04-19: コンフリクト線描画用の座標マップ
   // エージェントkey → {x, y} を計算（アバターと同じ座標系）
+  // 叡（CENTER_KEY）は中央(0,0)固定で線を持たない
   const positionMap = useMemo(() => {
     const m = new Map<string, { x: number; y: number }>()
     ARC_ORDER.forEach((key, idx) => {
       const pos = getPosition(idx, ARC_ORDER.length)
       m.set(key, { x: pos.x, y: pos.y })
     })
+    m.set(CENTER_KEY, { x: 0, y: 0 })
     return m
   }, [getPosition])
 
@@ -425,6 +429,8 @@ export default function AvatarField({ pipeline, fullScreen, onNodeClick }: Props
             height={1}
           >
             {pipeline.conflictEdges.map((edge, idx) => {
+              // v0.3 2026-04-19: 叡（CENTER_KEY）は通過点・線を持たない
+              if (edge.fromHat === CENTER_KEY || edge.toHat === CENTER_KEY) return null
               const from = positionMap.get(edge.fromHat)
               const to = positionMap.get(edge.toHat)
               if (!from || !to) return null
@@ -468,8 +474,17 @@ export default function AvatarField({ pipeline, fullScreen, onNodeClick }: Props
       <div className="absolute left-1/2 top-1/2" style={{ transform: 'translate(-50%, -50%)' }}>
         <AnimatePresence>
           {visibleAvatars.map((def) => {
-            const arcIndex = ARC_ORDER.indexOf(def.key)
-            const pos = getPosition(arcIndex, ARC_ORDER.length)
+            const isCenter = def.key === CENTER_KEY
+            const arcIndex = isCenter ? 0 : ARC_ORDER.indexOf(def.key)
+            // v0.3 2026-04-19: 叡（CENTER_KEY）は中央(0,0)固定・少し大きめに
+            const pos = isCenter
+              ? {
+                  x: 0,
+                  y: 0,
+                  scale: phase === 'idle' ? 0 : 1.15,
+                  opacity: phase === 'idle' ? 0 : 1,
+                }
+              : getPosition(arcIndex, ARC_ORDER.length)
             const isThinking = pipeline.thinkingAgents.includes(def.key as HatColor) &&
                                !pipeline.agents.some(a => a.hat === def.key)
 
