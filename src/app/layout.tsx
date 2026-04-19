@@ -18,6 +18,10 @@ export const metadata: Metadata = {
   description: "考えるとき、画面が思考になる。ソクラテス式AIファシリテーションで思考を拡張する。",
 };
 
+// Vercel Edge Cacheを無効化（デプロイ直後からコード変更が反映されるように）
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default function RootLayout({
   children,
 }: Readonly<{
