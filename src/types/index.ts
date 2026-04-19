@@ -212,6 +212,33 @@ export interface Session {
   completedAt?: string
 }
 
+// ── v0.2: フォーカスポイント・越境・議論フェーズ ───────────
+// 2026-04-19 研太さん指示: deliberateステージ内で順次+越境+FP動的決定
+export interface FocusPoint {
+  id: string
+  question: string           // フォーカスポイントの問い
+  rationale: string          // なぜこの問いが重要か
+  options?: string[]         // 選択肢（あれば）
+  proposedAt: string         // ISO timestamp
+}
+
+export interface FocusPointProposal {
+  candidates: FocusPoint[]       // 1件なら自動確定、2-3件ならユーザー選択
+  mode: 'auto' | 'user_select'
+}
+
+export interface CrossBorderRecord {
+  id: string
+  fromHat: HatColor              // 越境元（本来発言順ではないエージェント）
+  toHat: HatColor                // 越境先（誰の発言に反論しているか）
+  level: 'L2' | 'L3'             // 越境品質（L1は出さない）
+  content: string                // 越境内容（1文・疑問形が原則）
+  reason: string                 // なぜこの越境が必要か
+  timestamp: string
+}
+
+export type DiscussionPhase = 'pre_focus' | 'focused' | 'converging'
+
 // ── SSE イベント ──────────────────────────────────────
 export type SSEEventType =
   | 'stage:start'
@@ -222,6 +249,11 @@ export type SSEEventType =
   | 'agent:complete'
   | 'pipeline:complete'
   | 'pipeline:error'
+  // v0.2 追加
+  | 'focus:proposed'          // 叡がフォーカスポイント候補を提示
+  | 'focus:decided'           // フォーカスポイント確定（auto or user_select）
+  | 'phase:transition'        // 議論フェーズ移行
+  | 'cross_border:triggered'  // 越境発生
 
 export interface SSEEvent {
   type: SSEEventType
@@ -229,4 +261,9 @@ export interface SSEEvent {
   hat?: HatColor
   data: unknown
   timestamp: string
+  // v0.2 追加フィールド
+  focusProposal?: FocusPointProposal    // focus:proposed で使用
+  focusPoint?: FocusPoint               // focus:decided で使用
+  phase?: DiscussionPhase               // phase:transition で使用
+  crossBorder?: CrossBorderRecord       // cross_border:triggered で使用
 }
