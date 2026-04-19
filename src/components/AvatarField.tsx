@@ -381,6 +381,17 @@ export default function AvatarField({ pipeline, fullScreen, onNodeClick }: Props
 
   const visibleAvatars = AVATAR_DEFS.filter(d => visibleKeys.has(d.key))
 
+  // v0.3 2026-04-19: コンフリクト線描画用の座標マップ
+  // エージェントkey → {x, y} を計算（アバターと同じ座標系）
+  const positionMap = useMemo(() => {
+    const m = new Map<string, { x: number; y: number }>()
+    ARC_ORDER.forEach((key, idx) => {
+      const pos = getPosition(idx, ARC_ORDER.length)
+      m.set(key, { x: pos.x, y: pos.y })
+    })
+    return m
+  }, [getPosition])
+
   return (
     <div
       className={`relative ${fullScreen ? 'w-full h-full' : 'w-full aspect-square'} overflow-hidden`}
@@ -402,6 +413,54 @@ export default function AvatarField({ pipeline, fullScreen, onNodeClick }: Props
             animate={phase === 'unified' ? { scale: [1, 1.5, 1], opacity: [0.15, 0.3, 0.15] } : {}}
             transition={{ duration: 2, repeat: Infinity }}
           />
+        </div>
+      )}
+
+      {/* Conflict edges layer (v0.3 2026-04-19 深設計: コンフリクト線のみ記録・時間で消えない) */}
+      {phase !== 'idle' && pipeline.conflictEdges.length > 0 && (
+        <div className="absolute left-1/2 top-1/2 pointer-events-none" style={{ transform: 'translate(-50%, -50%)' }}>
+          <svg
+            style={{ overflow: 'visible' }}
+            width={1}
+            height={1}
+          >
+            {pipeline.conflictEdges.map((edge, idx) => {
+              const from = positionMap.get(edge.fromHat)
+              const to = positionMap.get(edge.toHat)
+              if (!from || !to) return null
+              const fromDef = AVATAR_DEFS.find(d => d.key === edge.fromHat)
+              // L3=白(金寄り)/太・L2=発言者色/中太
+              const strokeColor = edge.level === 'L3' ? '#FFD700' : (fromDef?.hex ?? '#888')
+              const strokeWidth = edge.level === 'L3' ? 2.5 : 1.5
+              // 加算合成で重なると濃く: 30%透明度×重複で濃くなる
+              const strokeOpacity = 0.45
+              // 曲線: 中点を外側に膨らませる（2次ベジェ）
+              const mx = (from.x + to.x) / 2
+              const my = (from.y + to.y) / 2
+              // 中心(0,0)から外向きに40px膨らませる
+              const dx = mx, dy = my
+              const dist = Math.sqrt(dx * dx + dy * dy) || 1
+              const bulge = 40
+              const cx = mx + (dx / dist) * bulge
+              const cy = my + (dy / dist) * bulge
+              const d = `M ${from.x} ${from.y} Q ${cx} ${cy} ${to.x} ${to.y}`
+              return (
+                <motion.path
+                  key={edge.id}
+                  d={d}
+                  stroke={strokeColor}
+                  strokeWidth={strokeWidth}
+                  strokeOpacity={strokeOpacity}
+                  fill="none"
+                  strokeLinecap="round"
+                  initial={{ pathLength: 0, opacity: 0 }}
+                  animate={{ pathLength: 1, opacity: 1 }}
+                  transition={{ duration: 0.6, delay: idx * 0.05, ease: 'easeOut' }}
+                  style={{ mixBlendMode: 'screen' }}
+                />
+              )
+            })}
+          </svg>
         </div>
       )}
 
