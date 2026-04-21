@@ -358,19 +358,39 @@ const DEFAULT_CROSS_BORDER_MAP: Partial<Record<HatColor, HatColor>> = {
 }
 
 // エージェント名（英・漢字）と HatColor のマッピング（判断エージェント4体のみ）
-const AGENT_NAME_PATTERNS: Array<[RegExp, HatColor]> = [
+// 漢字単体マッチは「情報」「戒律」「光景」「創業」等の一般語と衝突するため、
+// 以下のいずれかの文脈でのみエージェント名として検出する:
+//   - 漢字の前が文頭・空白・句読点・引用符で、直後に主語助詞（が/は/も）
+//   - 引用符で囲まれた単体漢字（「情」等）
+//   - 敬称・肩書き付き（情さん / 情氏 / 情エージェント）
+//   - ラベル記法（情: / 情（Jo） / Jo(情)）
+export const AGENT_NAME_PATTERNS: Array<[RegExp, HatColor]> = [
+  // 英字名: 単語境界付き
   [/\bJo\b/i, 'red'],
-  [/情/, 'red'],
   [/\bKai\b/i, 'black'],
-  [/戒/, 'black'],
   [/\bKo\b/i, 'yellow'],
-  [/光/, 'yellow'],
   [/\bSo\b/i, 'green'],
-  [/創/, 'green'],
+  // 漢字名: 主語助詞直後（前方に非漢字境界を要求して複合語を除外）
+  [/(?:^|[\s「『（(、。,.!?！？])情[がはも]/, 'red'],
+  [/(?:^|[\s「『（(、。,.!?！？])戒[がはも]/, 'black'],
+  [/(?:^|[\s「『（(、。,.!?！？])光[がはも]/, 'yellow'],
+  [/(?:^|[\s「『（(、。,.!?！？])創[がはも]/, 'green'],
+  // 漢字名: 引用符で囲まれた単体
+  [/「情」/, 'red'],
+  [/「戒」/, 'black'],
+  [/「光」/, 'yellow'],
+  [/「創」/, 'green'],
+  // 漢字名: 敬称・肩書き・ラベル
+  [/情(さん|氏|エージェント|[:：(（])/, 'red'],
+  [/戒(さん|氏|エージェント|[:：(（])/, 'black'],
+  [/光(さん|氏|エージェント|[:：(（])/, 'yellow'],
+  [/創(さん|氏|エージェント|[:：(（])/, 'green'],
 ]
 
 // 発言中に明示参照されている他エージェントの HatColor を返す（話者自身は除外）
-function detectNameReferences(speech: string, fromHat: HatColor): HatColor[] {
+// 検出順序は AGENT_NAME_PATTERNS の順序 → 発言文中での出現順序の優先付けは
+// 将来の拡張ポイント（現状は「出現したら同格」扱い）
+export function detectNameReferences(speech: string, fromHat: HatColor): HatColor[] {
   const found = new Set<HatColor>()
   for (const [pattern, hat] of AGENT_NAME_PATTERNS) {
     if (hat !== fromHat && pattern.test(speech)) {
