@@ -349,7 +349,7 @@ export async function runFocusPoint(
 }
 
 // ── v0.2: 越境判定（軽量モデル・各エージェント発言後）──────
-// デフォルトの越境候補マップ: この発言をした色 → 越境候補の色
+// デフォルトの越境候補マップ: この発言をした色 → 越境候補の色（フォールバック）
 const DEFAULT_CROSS_BORDER_MAP: Partial<Record<HatColor, HatColor>> = {
   red: 'green',     // 情 → 創（感情×創造）
   black: 'yellow',  // 戒 → 光（リスク×価値）
@@ -357,47 +357,98 @@ const DEFAULT_CROSS_BORDER_MAP: Partial<Record<HatColor, HatColor>> = {
   green: 'black',   // 創 → 戒（創造×リスク）
 }
 
+// エージェント名と HatColor のマッピング（7体全員を対象）
+//
+// 設計方針: プロンプト側で「他エージェントは 漢字(英字) のセット表記で参照せよ」と
+// 強制することで、漢字単体マッチによる一般語衝突（「情報」「戒律」「光景」「創業」等）
+// を構造的に排除する。検出は以下の優先順位で行う:
+//   1. セット表記（漢字(英字) または 英字(漢字)）— プロンプトで強制する第一形式
+//   2. 英字名単独 — LLMがプロンプトを守らない場合のフォールバック
+// 漢字単体マッチは意図的に採用しない（false positive の温床になるため）。
+// 7体の HatColor: white(明/Mei), red(情/Jo), black(戒/Kai), yellow(光/Ko),
+//                 green(創/So), blue(叡/Ei)。理(Ri) は HatColor='verify' で
+//                 別軸のため、発言内参照としては検出対象外。
+export const AGENT_NAME_PATTERNS: Array<[RegExp, HatColor]> = [
+  // 第一優先: セット表記「漢字(英字)」「英字(漢字)」— 全角/半角カッコ両対応
+  [/明\s*[（(]\s*Mei\s*[)）]|Mei\s*[（(]\s*明\s*[)）]/i, 'white'],
+  [/情\s*[（(]\s*Jo\s*[)）]|Jo\s*[（(]\s*情\s*[)）]/i, 'red'],
+  [/戒\s*[（(]\s*Kai\s*[)）]|Kai\s*[（(]\s*戒\s*[)）]/i, 'black'],
+  [/光\s*[（(]\s*Ko\s*[)）]|Ko\s*[（(]\s*光\s*[)）]/i, 'yellow'],
+  [/創\s*[（(]\s*So\s*[)）]|So\s*[（(]\s*創\s*[)）]/i, 'green'],
+  [/叡\s*[（(]\s*Ei\s*[)）]|Ei\s*[（(]\s*叡\s*[)）]/i, 'blue'],
+  // フォールバック: 英字名単独（プロンプト指示を守らなかった場合の保険）
+  // 単語境界 \b で「Joseph」等の複合語にマッチしないよう保護
+  [/\bMei\b/i, 'white'],
+  [/\bJo\b/i, 'red'],
+  [/\bKai\b/i, 'black'],
+  [/\bKo\b/i, 'yellow'],
+  [/\bSo\b/i, 'green'],
+  [/\bEi\b/i, 'blue'],
+]
+
+// 発言中に明示参照されている他エージェントの HatColor を返す（話者自身は除外）
+export function detectNameReferences(speech: string, fromHat: HatColor): HatColor[] {
+  const found = new Set<HatColor>()
+  for (const [pattern, hat] of AGENT_NAME_PATTERNS) {
+    if (hat !== fromHat && pattern.test(speech)) {
+      found.add(hat)
+    }
+  }
+  return Array.from(found)
+}
+
 export async function runCrossBorder(
   fromHat: HatColor,
   focusQuestion: string,
   lastSpeech: string,
 ): Promise<CrossBorderRecord | null> {
-  const toHat = DEFAULT_CROSS_BORDER_MAP[fromHat]
-  if (!toHat) return null
+  // 候補リスト: 名前参照エージェントを優先し、固定マップをフォールバックとして追加
+  const nameReferenced = detectNameReferences(lastSpeech, fromHat)
+  const fixedTarget = DEFAULT_CROSS_BORDER_MAP[fromHat]
+  const candidates = Array.from(
+    new Set<HatColor>([...nameReferenced, ...(fixedTarget ? [fixedTarget] : [])])
+  )
 
-  try {
-    const { text } = await generateText({
-      model: models.crossBorder,
-      prompt: prompts.crossBorder(fromHat, toHat, focusQuestion, lastSpeech),
-    })
+  if (candidates.length === 0) return null
 
-    const jsonMatch = text.match(/```json\s*([\s\S]*?)```/) ?? text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) return null
+  // 各候補を順に試行し、最初に L2/L3 を返したものを採用
+  for (const toHat of candidates) {
+    try {
+      const { text } = await generateText({
+        model: models.crossBorder,
+        prompt: prompts.crossBorder(fromHat, toHat, focusQuestion, lastSpeech),
+      })
 
-    const jsonStr = jsonMatch[1] ?? jsonMatch[0]
-    const parsed = JSON.parse(jsonStr) as {
-      shouldCross?: boolean
-      level?: 'L2' | 'L3' | null
-      content?: string | null
-      reason?: string
+      const jsonMatch = text.match(/```json\s*([\s\S]*?)```/) ?? text.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) continue
+
+      const jsonStr = jsonMatch[1] ?? jsonMatch[0]
+      const parsed = JSON.parse(jsonStr) as {
+        shouldCross?: boolean
+        level?: 'L2' | 'L3' | null
+        content?: string | null
+        reason?: string
+      }
+
+      if (!parsed.shouldCross) continue
+      if (parsed.level !== 'L2' && parsed.level !== 'L3') continue
+      if (!parsed.content) continue
+
+      return {
+        id: `cb_${Date.now()}_${toHat}`,
+        fromHat,
+        toHat,
+        level: parsed.level,
+        content: parsed.content,
+        reason: parsed.reason ?? '',
+        timestamp: new Date().toISOString(),
+      }
+    } catch {
+      continue
     }
-
-    if (!parsed.shouldCross) return null
-    if (parsed.level !== 'L2' && parsed.level !== 'L3') return null
-    if (!parsed.content) return null
-
-    return {
-      id: `cb_${Date.now()}_${toHat}`,
-      fromHat,
-      toHat,
-      level: parsed.level,
-      content: parsed.content,
-      reason: parsed.reason ?? '',
-      timestamp: new Date().toISOString(),
-    }
-  } catch {
-    return null
   }
+
+  return null
 }
 
 // ── v0.2: 順次deliberate（フォーカスポイント＋越境対応）──────
@@ -463,11 +514,15 @@ export async function runDeliberateSequential(
     onEvent?.onAgentComplete?.(agentResponse)
 
     // 越境判定（最後のエージェントを除く・上限3回）
+    // reasoning + keyPoints を渡すことで名前参照の検出精度を向上
     if (i < order.length - 1 && crossBorders.length < CROSS_BORDER_LIMIT_PER_FP) {
+      const speechContext = agentResponse.keyPoints.length > 0
+        ? `${agentResponse.reasoning}\n\nKey points: ${agentResponse.keyPoints.join('; ')}`
+        : agentResponse.reasoning
       const record = await runCrossBorder(
         hat,
         focusPoint.question,
-        agentResponse.reasoning,
+        speechContext,
       )
       if (record) {
         crossBorders.push(record)
