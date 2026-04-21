@@ -15,9 +15,16 @@ type AvatarDef = {
   key: string        // AGENTS key (white, red, black, yellow, green, verify, blue)
   name: string
   kanji: string
-  hex: string
+  hex: string        // Brand color (used as fallback and for conflict edges as identity)
+  hexLight?: string  // Override for light theme (when brand color loses contrast on light bg)
+  hexDark?: string   // Override for dark theme (when brand color loses contrast on dark bg)
   shape: 'circle' | 'flame' | 'hexagon' | 'sunburst' | 'branch' | 'mesh' | 'orb'
   animation: 'still' | 'flicker' | 'shadow' | 'pulse' | 'stretch' | 'rotate' | 'breathe'
+}
+
+function getDisplayHex(def: AvatarDef, isDark: boolean): string {
+  if (isDark) return def.hexDark ?? def.hex
+  return def.hexLight ?? def.hex
 }
 
 export type AvatarNode = {
@@ -42,10 +49,10 @@ type Props = {
 // ============================================================
 
 const AVATAR_DEFS: AvatarDef[] = [
-  { key: 'white',  name: 'Mei', kanji: '\u660E', hex: '#E2E8F0', shape: 'circle',   animation: 'still' },
+  { key: 'white',  name: 'Mei', kanji: '\u660E', hex: '#E2E8F0', hexLight: '#94A3B8', shape: 'circle',   animation: 'still' },
   { key: 'red',    name: 'Jo',  kanji: '\u60C5', hex: '#EF4444', shape: 'flame',    animation: 'flicker' },
-  { key: 'black',  name: 'Kai', kanji: '\u6212', hex: '#1E293B', shape: 'hexagon',  animation: 'shadow' },
-  { key: 'yellow', name: 'Ko',  kanji: '\u5149', hex: '#F59E0B', shape: 'sunburst', animation: 'pulse' },
+  { key: 'black',  name: 'Kai', kanji: '\u6212', hex: '#1E293B', hexDark: '#64748B',  shape: 'hexagon',  animation: 'shadow' },
+  { key: 'yellow', name: 'Ko',  kanji: '\u5149', hex: '#F59E0B', hexLight: '#D97706', shape: 'sunburst', animation: 'pulse' },
   { key: 'green',  name: 'So',  kanji: '\u5275', hex: '#22C55E', shape: 'branch',   animation: 'stretch' },
   { key: 'verify', name: 'Ri',  kanji: '\u7406', hex: '#8B5CF6', shape: 'mesh',     animation: 'rotate' },
   { key: 'blue',   name: 'Ei',  kanji: '\u53E1', hex: '#3B82F6', shape: 'orb',      animation: 'breathe' },
@@ -70,9 +77,13 @@ function AvatarShape({ def, size, phase, isThinking, isDark }: {
   const r = size / 2
   const glowOpacity = isDark ? (def.key === 'black' ? 0.5 : 0.35) : 0.2
   const strokeWidth = isDark ? 0 : 1.5
-  const kaiVisible = def.key === 'black' ? (isThinking ? 1 : 0.35) : 1
-  const lightHex = def.key === 'yellow' && !isDark ? '#D97706' : def.hex
-  const meiStroke = def.key === 'white' && !isDark ? lightHex : 'none'
+  // Kai は active 中に発言していないときだけ控えめ（0.35）。converging/unified/idle では全員と同じ存在感。
+  const kaiVisible = def.key === 'black' ? (isThinking || phase !== 'active' ? 1 : 0.35) : 1
+  // Theme-aware display color (falls back to def.hex when no override)
+  const displayHex = getDisplayHex(def, isDark)
+  // Keep existing aliases to minimize churn in the large JSX block below
+  const lightHex = displayHex
+  const meiStroke = def.key === 'white' && !isDark ? displayHex : 'none'
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ opacity: kaiVisible, transition: 'opacity 0.5s' }}>
@@ -226,7 +237,7 @@ function AvatarInner({ def, index, phase, isThinking, isDark, randomOffsets }: {
       <div
         className="absolute inset-0 rounded-full"
         style={{
-          background: `radial-gradient(circle at 50% ${phase === 'unified' ? '65%' : '50%'}, ${def.hex}${isDark ? '40' : '25'}, transparent 70%)`,
+          background: `radial-gradient(circle at 50% ${phase === 'unified' ? '65%' : '50%'}, ${getDisplayHex(def, isDark)}${isDark ? '40' : '25'}, transparent 70%)`,
           filter: `blur(${def.key === 'blue' ? 12 : 8}px)`,
         }}
       />
@@ -436,7 +447,7 @@ export default function AvatarField({ pipeline, fullScreen, onNodeClick }: Props
               if (!from || !to) return null
               const fromDef = AVATAR_DEFS.find(d => d.key === edge.fromHat)
               // L3=白(金寄り)/太・L2=発言者色/中太
-              const strokeColor = edge.level === 'L3' ? '#FFD700' : (fromDef?.hex ?? '#888')
+              const strokeColor = edge.level === 'L3' ? '#FFD700' : (fromDef ? getDisplayHex(fromDef, isDark) : '#888')
               const strokeWidth = edge.level === 'L3' ? 2.5 : 1.5
               // 加算合成で重なると濃く: 30%透明度×重複で濃くなる
               const strokeOpacity = 0.45
@@ -529,7 +540,7 @@ export default function AvatarField({ pipeline, fullScreen, onNodeClick }: Props
                 {/* Name label */}
                 <motion.span
                   className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] whitespace-nowrap font-medium"
-                  style={{ color: def.hex }}
+                  style={{ color: getDisplayHex(def, isDark) }}
                   animate={{ opacity: phase === 'unified' ? 0.8 : 0.4 }}
                 >
                   {def.name}
@@ -539,7 +550,7 @@ export default function AvatarField({ pipeline, fullScreen, onNodeClick }: Props
                 {isThinking && (
                   <motion.div
                     className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full"
-                    style={{ background: def.hex }}
+                    style={{ background: getDisplayHex(def, isDark) }}
                     animate={{ scale: [1, 1.4, 1], opacity: [0.8, 0.4, 0.8] }}
                     transition={{ duration: 1, repeat: Infinity }}
                   />
