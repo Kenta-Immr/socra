@@ -537,6 +537,7 @@ export default function DecisionMap({ pipeline, onNodeClick, theme, round }: Pro
     observe: 'Mei gathering facts...',
     deliberate: 'Team deliberating...',
     verify: 'Ri verifying logic...',
+    premortem: 'Ei remembering from three years ahead...',
     synthesize: 'Ei synthesizing...',
   }[pipeline.currentStage] : null
 

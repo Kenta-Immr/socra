@@ -916,6 +916,103 @@ function StreamEntry({ entry, pipeline, expanded, onToggle, locale, onAgentFocus
     )
   }
 
+  // 叡の Pre-mortem（v4 Phase 4・時間の座）— 3年後から振り返る
+  if (entry.type === 'synthesis' && entry.stage === 'premortem') {
+    const pm = pipeline.preMortem
+    if (!pm || !pm.narrative) return null
+
+    const blue = AGENTS.blue.hex
+    return (
+      <div
+        className="rounded-xl p-5 mt-2 relative overflow-hidden"
+        style={{
+          background: `linear-gradient(135deg, #0b1220 0%, #111827 60%, ${blue}14 100%)`,
+          border: `2px solid ${blue}40`,
+          color: '#e5e7eb',
+        }}
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: `${blue}22` }}>
+            <span className="text-sm font-bold" style={{ color: blue }}>叡</span>
+          </div>
+          <div>
+            <span className="text-sm font-semibold" style={{ color: blue }}>Ei — Three Years From Now</span>
+            <p className="text-[10px]" style={{ color: '#94a3b8' }}>叡が時間の座から語る / Speaking from the Seat of Time</p>
+          </div>
+        </div>
+
+        {pm.scenarioTitle && (
+          <p className="text-lg font-semibold leading-snug mb-3" style={{ color: '#f1f5f9' }}>
+            &ldquo;{pm.scenarioTitle}&rdquo;
+          </p>
+        )}
+
+        <p className="text-sm leading-relaxed mb-4" style={{ color: '#cbd5e1' }}>
+          {pm.narrative}
+        </p>
+
+        {pm.rootCauses.length > 0 && (
+          <div className="mb-4">
+            <p className="text-[10px] uppercase tracking-wider mb-2" style={{ color: '#94a3b8' }}>
+              What caused the failure / 何がそれを招いたのか
+            </p>
+            <ul className="space-y-1.5">
+              {pm.rootCauses.map((c, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="w-1 h-1 rounded-full mt-2 flex-shrink-0" style={{ backgroundColor: blue }} />
+                  <span className="text-xs leading-relaxed" style={{ color: '#e2e8f0' }}>{c}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {pm.warningSigns.length > 0 && (
+          <div className="mb-4">
+            <p className="text-[10px] uppercase tracking-wider mb-2" style={{ color: '#94a3b8' }}>
+              Early warning signs / 早期警戒サイン
+            </p>
+            <ul className="space-y-1.5">
+              {pm.warningSigns.map((w, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="w-1 h-1 rounded-full mt-2 flex-shrink-0" style={{ backgroundColor: '#f59e0b' }} />
+                  <span className="text-xs leading-relaxed" style={{ color: '#e2e8f0' }}>{w}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {pm.retractionTriggers.length > 0 && (
+          <div className="mb-4 p-3 rounded-lg" style={{ background: '#1f2937', border: '1px solid #374151' }}>
+            <p className="text-[10px] uppercase tracking-wider mb-2" style={{ color: '#f87171' }}>
+              Retraction triggers / 撤回条件
+            </p>
+            <ul className="space-y-1.5">
+              {pm.retractionTriggers.map((t, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="text-[10px] mt-0.5 font-bold" style={{ color: '#f87171' }}>◆</span>
+                  <span className="text-xs leading-relaxed font-medium" style={{ color: '#fca5a5' }}>{t}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {pm.coreQuestionBack && (
+          <div className="mt-4 pt-4 border-t" style={{ borderColor: `${blue}30` }}>
+            <p className="text-[10px] uppercase tracking-wider mb-2" style={{ color: '#94a3b8' }}>
+              Returning to the present / 現在に戻って、叡があなたに問う
+            </p>
+            <p className="text-base font-medium italic leading-relaxed" style={{ color: blue }}>
+              &ldquo;{pm.coreQuestionBack}&rdquo;
+            </p>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // 叡の統合（メンター — 視覚的に区別）
   if (entry.type === 'synthesis') {
     const synthesis = pipeline.synthesis

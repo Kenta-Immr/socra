@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef } from 'react'
-import type { SSEEvent, PipelineStage, AgentResponse, StructuredQuestion, ObservationResult, VerificationResult, SynthesisResult, HatColor, FocusPoint, FocusPointProposal, CrossBorderRecord, DiscussionPhase, ConflictEdge } from '@/types'
+import type { SSEEvent, PipelineStage, AgentResponse, StructuredQuestion, ObservationResult, VerificationResult, SynthesisResult, PreMortemResult, HatColor, FocusPoint, FocusPointProposal, CrossBorderRecord, DiscussionPhase, ConflictEdge } from '@/types'
 
 export type TimelineEntry = {
   id: string
@@ -31,6 +31,7 @@ export type PipelineUI = {
   observation: ObservationResult | null
   agents: AgentResponse[]
   verification: VerificationResult | null
+  preMortem: PreMortemResult | null
   synthesis: SynthesisResult | null
   error: string | null
   // マップ成長用: 全ラウンドの累積データ
@@ -52,6 +53,7 @@ const STAGE_LABELS: Record<PipelineStage, string> = {
   observe: 'Mei is gathering facts...',
   deliberate: 'Your team is thinking...',
   verify: 'Ri is checking logic...',
+  premortem: 'Ei is remembering the failure from three years ahead...',
   synthesize: 'Ei is synthesizing...',
 }
 
@@ -64,6 +66,7 @@ export function usePipeline() {
     observation: null,
     agents: [],
     verification: null,
+    preMortem: null,
     synthesis: null,
     error: null,
     round: 0,
@@ -114,6 +117,7 @@ export function usePipeline() {
         observation: null,
         agents: [],
         verification: null,
+        preMortem: null,
         synthesis: null,
         error: null,
         round: currentRound + 1,
@@ -229,6 +233,28 @@ export function usePipeline() {
                   ].join('\n'),
                   timestamp: event.timestamp,
                 })
+              } else if (event.stage === 'premortem') {
+                // v4 Phase 4: Pre-mortem 結果。error ペイロードの場合はスキップ。
+                const raw = event.data as unknown
+                if (raw && typeof raw === 'object' && 'narrative' in raw) {
+                  const pm = raw as PreMortemResult
+                  setState(prev => ({ ...prev, preMortem: pm }))
+                  addTimeline({
+                    id: `ei-premortem-${Date.now()}`,
+                    type: 'synthesis',
+                    name: 'Ei',
+                    hat: 'blue',
+                    stage: 'premortem',
+                    content: [
+                      pm.scenarioTitle,
+                      '',
+                      pm.narrative,
+                      '',
+                      pm.coreQuestionBack,
+                    ].filter(Boolean).join('\n'),
+                    timestamp: event.timestamp,
+                  })
+                }
               } else if (event.stage === 'synthesize') {
                 const syn = event.data as SynthesisResult
                 setState(prev => ({ ...prev, synthesis: syn }))
@@ -444,6 +470,7 @@ export function usePipeline() {
       structured: null,
       observation: lastRound?.observation ?? null,
       agents: lastAgents,
+      preMortem: null,
       verification: lastRound?.verification ? {
         overallConsistency: lastRound.verification.overallConsistency,
         contradictions: lastRound.verification.contradictions.map(c => ({
