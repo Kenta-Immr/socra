@@ -120,6 +120,7 @@ export interface PreMortemResult {
   warningSigns: string[]         // 早期警戒サイン（このサインが出たら黄信号・3〜5個）
   retractionTriggers: string[]   // 撤回条件（これが起きたら引き返す・2〜4個）
   coreQuestionBack: string       // 現在に戻って叡が問う核心の問い（1文）
+  disclaimer: string             // v4 安全装置: 「これは仮想シナリオ・数字は予測ではなく仮置き」と明記する1〜2文
 }
 
 // ── Stage 4: 統合 ──────────────────────────────────────

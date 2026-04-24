@@ -941,6 +941,18 @@ function StreamEntry({ entry, pipeline, expanded, onToggle, locale, onAgentFocus
           </div>
         </div>
 
+        {pm.disclaimer && (
+          <div
+            className="mb-4 px-3 py-2 rounded-md flex items-start gap-2"
+            style={{ background: '#0f172a', border: '1px solid #334155' }}
+          >
+            <span className="text-[10px] mt-0.5 font-bold" style={{ color: '#fbbf24' }}>※</span>
+            <p className="text-[11px] leading-relaxed" style={{ color: '#cbd5e1' }}>
+              {pm.disclaimer}
+            </p>
+          </div>
+        )}
+
         {pm.scenarioTitle && (
           <p className="text-lg font-semibold leading-snug mb-3" style={{ color: '#f1f5f9' }}>
             &ldquo;{pm.scenarioTitle}&rdquo;

@@ -209,6 +209,10 @@ export async function runPreMortem(
 
   // JSON 抽出（コードフェンス or 生 JSON）
   const jsonMatch = text.match(/```json\s*([\s\S]*?)```/) ?? text.match(/\{[\s\S]*\}/)
+  // v4 安全装置: モデルが disclaimer を出さなかった場合のデフォルト文言
+  const defaultDisclaimer =
+    'これは未来から語られた仮想シナリオです。登場する数字（金額・月数・週数・割合）は予測ではなく、思考のための仮置き値です。あなたの状況に合わせて調整してください。'
+
   const fallback: PreMortemResult = {
     hat: 'blue',
     model: 'claude',
@@ -218,6 +222,7 @@ export async function runPreMortem(
     warningSigns: [],
     retractionTriggers: [],
     coreQuestionBack: '',
+    disclaimer: defaultDisclaimer,
   }
 
   if (!jsonMatch) return fallback
@@ -234,6 +239,9 @@ export async function runPreMortem(
       warningSigns: Array.isArray(parsed.warningSigns) ? parsed.warningSigns.filter(s => typeof s === 'string') : [],
       retractionTriggers: Array.isArray(parsed.retractionTriggers) ? parsed.retractionTriggers.filter(s => typeof s === 'string') : [],
       coreQuestionBack: typeof parsed.coreQuestionBack === 'string' ? parsed.coreQuestionBack : '',
+      disclaimer: typeof parsed.disclaimer === 'string' && parsed.disclaimer.trim().length > 0
+        ? parsed.disclaimer
+        : defaultDisclaimer,
     }
   } catch {
     return fallback
