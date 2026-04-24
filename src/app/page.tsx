@@ -1021,6 +1021,69 @@ function StreamEntry({ entry, pipeline, expanded, onToggle, locale, onAgentFocus
             </p>
           </div>
         )}
+
+        {/* v4 軽量複数シナリオ拡張: 「別の壊し方を見る」 */}
+        {pipeline.preMortemVariants.length > 0 && (
+          <div className="mt-5 space-y-3">
+            {pipeline.preMortemVariants.map((v, i) => (
+              <div
+                key={`variant-${i}`}
+                className="rounded-lg p-3"
+                style={{
+                  background: '#0f172a',
+                  border: `1px solid ${blue}30`,
+                  color: '#cbd5e1',
+                }}
+              >
+                <p className="text-[10px] uppercase tracking-wider mb-1.5" style={{ color: '#64748b' }}>
+                  別の壊し方 / Another way it could break · {i + 1}
+                </p>
+                {v.scenarioTitle && (
+                  <p className="text-sm font-semibold leading-snug mb-2" style={{ color: '#e2e8f0' }}>
+                    &ldquo;{v.scenarioTitle}&rdquo;
+                  </p>
+                )}
+                {v.narrative && (
+                  <p className="text-xs leading-relaxed mb-2" style={{ color: '#94a3b8' }}>
+                    {v.narrative}
+                  </p>
+                )}
+                {v.coreQuestionBack && (
+                  <p className="text-xs italic mt-2 pt-2 border-t leading-relaxed" style={{ borderColor: `${blue}20`, color: blue }}>
+                    &ldquo;{v.coreQuestionBack}&rdquo;
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {pipeline.preMortemVariants.length < 3 && (
+          <div className="mt-4 pt-3 border-t" style={{ borderColor: `${blue}20` }}>
+            <button
+              type="button"
+              onClick={() => pipeline.loadPreMortemVariant()}
+              disabled={pipeline.variantLoading}
+              className="text-[11px] tracking-wide px-3 py-1.5 rounded-md transition-opacity disabled:opacity-40 hover:opacity-80"
+              style={{
+                background: 'transparent',
+                border: `1px solid ${blue}40`,
+                color: '#94a3b8',
+              }}
+            >
+              {pipeline.variantLoading
+                ? '叡がもう一つの未来を見ている…'
+                : pipeline.preMortemVariants.length === 0
+                  ? '別の壊し方を見る ↓'
+                  : 'さらに別の壊し方を見る ↓'}
+            </button>
+            {pipeline.variantError && (
+              <p className="text-[10px] mt-2" style={{ color: '#fca5a5' }}>
+                {pipeline.variantError}
+              </p>
+            )}
+          </div>
+        )}
       </div>
     )
   }

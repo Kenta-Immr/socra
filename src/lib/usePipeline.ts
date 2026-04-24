@@ -32,6 +32,10 @@ export type PipelineUI = {
   agents: AgentResponse[]
   verification: VerificationResult | null
   preMortem: PreMortemResult | null
+  // v4 軽量複数シナリオ拡張: 「別の壊し方を見る」で追加生成された variants
+  preMortemVariants: PreMortemResult[]
+  variantLoading: boolean
+  variantError: string | null
   synthesis: SynthesisResult | null
   error: string | null
   // マップ成長用: 全ラウンドの累積データ
@@ -67,6 +71,9 @@ export function usePipeline() {
     agents: [],
     verification: null,
     preMortem: null,
+    preMortemVariants: [],
+    variantLoading: false,
+    variantError: null,
     synthesis: null,
     error: null,
     round: 0,
@@ -118,6 +125,9 @@ export function usePipeline() {
         agents: [],
         verification: null,
         preMortem: null,
+        preMortemVariants: [],
+        variantLoading: false,
+        variantError: null,
         synthesis: null,
         error: null,
         round: currentRound + 1,
@@ -369,6 +379,71 @@ export function usePipeline() {
     setState(prev => ({ ...prev, status: 'error', error }))
   }, [])
 
+  // v4 軽量複数シナリオ拡張: 「別の壊し方を見る」呼び出し
+  const loadPreMortemVariant = useCallback(async () => {
+    // setState の updater 内で最新スナップショットを掴む（再レンダーは最小1回）
+    let proceed = true
+    let snapshot: PipelineUI | null = null
+    setState(prev => {
+      if (prev.variantLoading || !prev.structured || !prev.preMortem) {
+        proceed = false
+        return prev
+      }
+      snapshot = prev
+      return { ...prev, variantLoading: true, variantError: null }
+    })
+    if (!proceed || !snapshot) return
+    const snap = snapshot as PipelineUI
+
+    const avoidScenarios = [
+      snap.preMortem!.scenarioTitle,
+      ...snap.preMortemVariants.map(v => v.scenarioTitle),
+    ].filter(s => typeof s === 'string' && s.trim().length > 0)
+
+    try {
+      const res = await fetch('/api/pipeline/premortem-variant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          structured: snap.structured,
+          facts: snap.observation?.facts ?? [],
+          agents: snap.agents,
+          verification: snap.verification,
+          avoidScenarios,
+        }),
+      })
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        setState(prev => ({
+          ...prev,
+          variantLoading: false,
+          variantError: typeof errBody.error === 'string' ? errBody.error : 'variant load failed',
+        }))
+        return
+      }
+
+      const variant = await res.json() as PreMortemResult
+      if (!variant || typeof variant.narrative !== 'string') {
+        setState(prev => ({ ...prev, variantLoading: false, variantError: 'invalid variant response' }))
+        return
+      }
+
+      setState(prev => ({
+        ...prev,
+        preMortemVariants: [...prev.preMortemVariants, variant],
+        variantLoading: false,
+        variantError: null,
+      }))
+    } catch (err) {
+      setState(prev => ({
+        ...prev,
+        variantLoading: false,
+        variantError: err instanceof Error ? err.message : 'variant fetch failed',
+      }))
+    }
+  }, [])
+
   // セッション復元: 過去のラウンドデータからUI状態を再構築
   const restore = useCallback((rounds: Array<{
     question?: string
@@ -471,6 +546,9 @@ export function usePipeline() {
       observation: lastRound?.observation ?? null,
       agents: lastAgents,
       preMortem: null,
+      preMortemVariants: [],
+      variantLoading: false,
+      variantError: null,
       verification: lastRound?.verification ? {
         overallConsistency: lastRound.verification.overallConsistency,
         contradictions: lastRound.verification.contradictions.map(c => ({
@@ -505,5 +583,5 @@ export function usePipeline() {
     })
   }, [])
 
-  return { ...state, run, setError, restore }
+  return { ...state, run, setError, restore, loadPreMortemVariant }
 }
