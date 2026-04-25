@@ -1,5 +1,7 @@
 // Socra パイプライン SSE エンドポイント
 // 5段パイプラインを順次実行し、各ステージの結果をSSEでストリーミング
+// Note: runSynthesize は quick mode（軽量応答）でのみ使用。
+// フルモードの Synthesis は /api/pipeline/synthesize へ分離（2026-04-25）。
 import { runStructure, runObserve, runDeliberateSequential, runVerify, runSynthesize, runRouting, runFocusPoint, runPreMortem } from '@/lib/pipeline/engine'
 import { detectCrisis, getCrisisResponse } from '@/lib/safety'
 import type { SSEEvent, MemoryContext } from '@/types'
@@ -170,15 +172,17 @@ export async function POST(req: Request) {
             }
           }
 
-          // ── Stage 4: 青/統合 ────────────────────────
-          send({ type: 'stage:start', stage: 'synthesize', data: null, timestamp: now() })
-          const synthesis = await runSynthesize(structured, observation.facts, deliberation.agents, verification, undefined, userName, round, memoryContext)
-          send({ type: 'stage:complete', stage: 'synthesize', data: synthesis, timestamp: now() })
+          // ── Synthesis は別エンドポイント /api/pipeline/synthesize に分離 ─────
+          // 2026-04-25: Vercel maxDuration 300秒の二重消費を回避するため、
+          // メインパイプラインは Pre-mortem 完了で打ち切る。
+          // クライアント側（usePipeline）が pipeline:complete を受け取った後、
+          // structured/observation/deliberation/verification/preMortem を渡して
+          // /api/pipeline/synthesize を呼び出す責務を持つ。
 
-          // ── 完了 ────────────────────────────────────
+          // ── 完了（Synthesis 抜き）────────────────────────
           send({
             type: 'pipeline:complete',
-            data: { structured, observation, deliberation, verification, preMortem, synthesis, routing },
+            data: { structured, observation, deliberation, verification, preMortem, synthesis: null, routing },
             timestamp: now(),
           })
         }
