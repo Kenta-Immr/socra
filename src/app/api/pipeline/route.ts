@@ -1,15 +1,22 @@
 // Socra パイプライン SSE エンドポイント
 // 5段パイプラインを順次実行し、各ステージの結果をSSEでストリーミング
-// Note: runSynthesize は quick mode（軽量応答）でのみ使用。
-// フルモードの Synthesis は /api/pipeline/synthesize へ分離（2026-04-25）。
-import { runStructure, runObserve, runDeliberateSequential, runVerify, runSynthesize, runRouting, runFocusPoint, runPreMortem } from '@/lib/pipeline/engine'
+// Note:
+//   - quick mode（叡が単独応答）のみ runSynthesize を本ルート内で使う
+//   - full mode の Pre-mortem は /api/pipeline/premortem へ分離（2026-04-25）
+//   - full mode の Synthesis は /api/pipeline/synthesize へ分離（2026-04-25）
+//   メインルートは observe → deliberate → verify までで終了し、maxDuration 300 秒の
+//   消費を抑える。
+import { runStructure, runObserve, runDeliberateSequential, runVerify, runSynthesize, runRouting, runFocusPoint } from '@/lib/pipeline/engine'
 import { detectCrisis, getCrisisResponse } from '@/lib/safety'
 import type { SSEEvent, MemoryContext } from '@/types'
 
 export const maxDuration = 300  // Vercel Pro: 最大300秒。Web検索込みで余裕を持つ
 
 export async function POST(req: Request) {
-  const { question, context, locale, userName, round = 0, memoryContext } = await req.json() as {
+  // round / memoryContext は Pre-mortem / Synthesis 分離後はメインルートで使わないが、
+  // クライアント既存契約は維持する（クライアントは round と memoryContext を Pre-mortem
+  // と Synthesize の各エンドポイントに渡す）。
+  const { question, context, locale, userName, memoryContext } = await req.json() as {
     question: string; context?: string; locale?: string; userName?: string; round?: number; memoryContext?: MemoryContext
   }
 
@@ -157,32 +164,15 @@ export async function POST(req: Request) {
           const verification = await runVerify(structured, deliberation.agents)
           send({ type: 'stage:complete', stage: 'verify', data: verification, timestamp: now() })
 
-          // ── Stage 3.5: 叡 — Pre-mortem（v4 Phase 4・時間の座）────
-          // round 0（初回）のみ実行。フォローアップラウンドでは叡は現在に戻って対話する。
-          let preMortem = null
-          if (round === 0) {
-            send({ type: 'stage:start', stage: 'premortem', data: null, timestamp: now() })
-            try {
-              preMortem = await runPreMortem(structured, observation.facts, deliberation.agents, verification)
-              send({ type: 'stage:complete', stage: 'premortem', data: preMortem, timestamp: now() })
-            } catch (err) {
-              // Pre-mortem 失敗時は pipeline 全体を落とさず、synthesize へ続行
-              const msg = err instanceof Error ? err.message : 'premortem failed'
-              send({ type: 'stage:complete', stage: 'premortem', data: { error: msg }, timestamp: now() })
-            }
-          }
+          // ── Pre-mortem と Synthesis は別エンドポイントへ分離（2026-04-25）─────
+          // /api/pipeline/premortem  — round 0 のときクライアントが続けて呼ぶ
+          // /api/pipeline/synthesize — クライアントが最後に呼ぶ
+          // メインパイプラインは verify までで終了し、maxDuration 消費を抑える。
 
-          // ── Synthesis は別エンドポイント /api/pipeline/synthesize に分離 ─────
-          // 2026-04-25: Vercel maxDuration 300秒の二重消費を回避するため、
-          // メインパイプラインは Pre-mortem 完了で打ち切る。
-          // クライアント側（usePipeline）が pipeline:complete を受け取った後、
-          // structured/observation/deliberation/verification/preMortem を渡して
-          // /api/pipeline/synthesize を呼び出す責務を持つ。
-
-          // ── 完了（Synthesis 抜き）────────────────────────
+          // ── 完了（Pre-mortem / Synthesis 抜き）────────────────────────
           send({
             type: 'pipeline:complete',
-            data: { structured, observation, deliberation, verification, preMortem, synthesis: null, routing },
+            data: { structured, observation, deliberation, verification, preMortem: null, synthesis: null, routing },
             timestamp: now(),
           })
         }

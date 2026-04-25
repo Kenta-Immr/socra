@@ -308,9 +308,10 @@ export function usePipeline() {
               break
 
             case 'pipeline:complete': {
-              // 2026-04-25: Synthesis 分離後の挙動。
+              // 2026-04-25: Pre-mortem / Synthesis 分離後の挙動。
               // - Quick mode: event.data.synthesis が存在 → 即 complete
-              // - Full mode: synthesis === null → /api/pipeline/synthesize を別 fetch
+              // - Full mode round 0: premortem fetch → synthesize fetch
+              // - Full mode round > 0: synthesize fetch のみ
               const completeData = event.data as {
                 structured?: StructuredQuestion
                 observation?: ObservationResult
@@ -326,26 +327,74 @@ export function usePipeline() {
                 break
               }
 
-              // Full mode: Synthesis を別エンドポイントで非同期取得
-              setState(prev => ({ ...prev, currentStage: 'synthesize' as PipelineStage }))
-              addTimeline({
-                id: `stage-synthesize-start-${Date.now()}`,
-                type: 'system',
-                stage: 'synthesize',
-                content: STAGE_LABELS['synthesize'],
-                timestamp: new Date().toISOString(),
-              })
+              // Full mode: Pre-mortem（round 0 のみ）→ Synthesis を順次取得
+              const facts = completeData.observation?.facts ?? []
+              const agents = completeData.deliberation?.agents ?? []
+              const verification = completeData.verification
+              const structured = completeData.structured
 
               ;(async () => {
+                // ── Phase 4: Pre-mortem（round 0 のみ）──
+                if (currentRound === 0) {
+                  setState(prev => ({ ...prev, currentStage: 'premortem' as PipelineStage }))
+                  addTimeline({
+                    id: `stage-premortem-start-${Date.now()}`,
+                    type: 'system',
+                    stage: 'premortem',
+                    content: STAGE_LABELS['premortem'],
+                    timestamp: new Date().toISOString(),
+                  })
+                  try {
+                    const pmRes = await fetch('/api/pipeline/premortem', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ structured, facts, agents, verification }),
+                    })
+                    if (!pmRes.ok) {
+                      // Pre-mortem 失敗は致命傷ではない。warning だけ残して synthesize へ続行
+                      const errBody = await pmRes.json().catch(() => ({ error: `HTTP ${pmRes.status}` }))
+                      setState(prev => ({
+                        ...prev,
+                        variantError: typeof errBody.error === 'string' ? errBody.error : 'premortem failed',
+                      }))
+                    } else {
+                      const pm = await pmRes.json() as PreMortemResult
+                      if (pm && typeof pm.narrative === 'string') {
+                        setState(prev => ({ ...prev, preMortem: pm }))
+                        addTimeline({
+                          id: `ei-premortem-${Date.now()}`,
+                          type: 'synthesis',
+                          name: 'Ei',
+                          hat: 'blue',
+                          stage: 'premortem',
+                          content: [pm.scenarioTitle, '', pm.narrative, '', pm.coreQuestionBack].filter(Boolean).join('\n'),
+                          timestamp: new Date().toISOString(),
+                        })
+                      }
+                    }
+                  } catch {
+                    // Pre-mortem fetch失敗。synthesize へ続行
+                  }
+                }
+
+                // ── Stage 4: Synthesis ──
+                setState(prev => ({ ...prev, currentStage: 'synthesize' as PipelineStage }))
+                addTimeline({
+                  id: `stage-synthesize-start-${Date.now()}`,
+                  type: 'system',
+                  stage: 'synthesize',
+                  content: STAGE_LABELS['synthesize'],
+                  timestamp: new Date().toISOString(),
+                })
                 try {
                   const res = await fetch('/api/pipeline/synthesize', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                      structured: completeData.structured,
-                      facts: completeData.observation?.facts ?? [],
-                      agents: completeData.deliberation?.agents ?? [],
-                      verification: completeData.verification,
+                      structured,
+                      facts,
+                      agents,
+                      verification,
                       userName,
                       round: currentRound,
                       memoryContext,
@@ -434,10 +483,11 @@ export function usePipeline() {
         reader.cancel().catch(() => {})
         // 2026-04-25: SSE が done で終了したのに pipeline:complete / pipeline:error が
         // 受信されないケース（Vercel maxDuration 強制終了など）への防御。
-        // currentStage === 'synthesize' は分離した synthesize fetch が進行中の正常状態
-        // なので除外する。
+        // currentStage が 'premortem' / 'synthesize' は分離した fetch が進行中の
+        // 正常状態なので除外する。
         setState(prev => {
-          if (prev.status === 'running' && prev.currentStage !== 'synthesize') {
+          const inPostPipelineFetch = prev.currentStage === 'premortem' || prev.currentStage === 'synthesize'
+          if (prev.status === 'running' && !inPostPipelineFetch) {
             return {
               ...prev,
               status: 'error',
