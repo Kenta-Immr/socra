@@ -203,6 +203,30 @@ export default function Home() {
     }
   }, [pipeline.status, pipeline.structured, pipeline.synthesis, pipeline.agents])
 
+  // ── Self-Reference 質問（2026-04-25 追加・観の提言）─────
+  // Rogers, Kuiper & Kirker (1977) Self-Reference Effect:
+  // 自分の言葉で答えると当事者意識・記憶定着・動機が顕著に上がる。
+  // Phase 1 冒頭でユーザー自身の仮説を引き出すことで、以降のフェーズで
+  // 7体がユーザーの言葉に反応する設計に切り替える。
+  const SELF_REFERENCE_QUESTIONS: Record<Locale, [string, string]> = {
+    ja: [
+      '直感では、答えはどちらに傾いていますか？理由を一言で',
+      'やらなかった場合、何が起きると思いますか？',
+    ],
+    en: [
+      'What is your gut instinct? Which way are you leaning — in one line?',
+      'If you do NOT do this, what do you think will happen?',
+    ],
+    zh: [
+      '凭直觉，您倾向哪个方向？请用一句话说明理由',
+      '如果不做这件事，您认为会发生什么？',
+    ],
+    es: [
+      '¿Cuál es tu intuición? ¿Hacia dónde te inclinas, en una línea?',
+      'Si NO lo haces, ¿qué crees que pasará?',
+    ],
+  }
+
   // ── 送信ハンドラー ────────────────────────────
   async function handleInitialSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -230,16 +254,23 @@ export default function Home() {
         pipeline.setError(`${data.message}\n\n${helplines}`)
         return
       }
-      const questions = data.questions ?? []
-      if (questions.length === 0 || data.error) {
-        setContextPhase('done')
-        pipeline.run(q, undefined, undefined, memoryContext)
+      // Self-Reference 質問2問を先頭に挿入（観の提言・Self-Reference Effect）
+      const selfRefQs = SELF_REFERENCE_QUESTIONS[locale] ?? SELF_REFERENCE_QUESTIONS.en
+      const dynamicQs = data.questions ?? []
+      // 動的質問のうち、最初の1問（通常は名前を聞く）は残し、それ以降は省略
+      // → ユーザー入力の長さを抑える（合計3問: SR1 + SR2 + 名前）
+      const finalQs = [...selfRefQs, ...dynamicQs.slice(0, 1)]
+
+      if (data.error && dynamicQs.length === 0) {
+        // API失敗時でも Self-Reference 質問だけは出す
+        setContextQuestions(selfRefQs)
       } else {
-        setContextQuestions(questions)
+        setContextQuestions(finalQs)
       }
     } catch {
-      setContextPhase('done')
-      pipeline.run(q, undefined, undefined, memoryContext)
+      // API失敗時でも Self-Reference 質問だけは出す
+      const selfRefQs = SELF_REFERENCE_QUESTIONS[locale] ?? SELF_REFERENCE_QUESTIONS.en
+      setContextQuestions(selfRefQs)
     } finally {
       setLoadingContextQs(false)
     }
@@ -252,8 +283,9 @@ export default function Home() {
     const newAnswers = [...contextAnswers, answer]
     setContextAnswers(newAnswers)
     if (inputRef.current) inputRef.current.value = ''
-    // 最初の回答（名前の質問への回答）をuserNameとして保存
-    if (currentContextQ === 0 && !userName) {
+    // 名前の質問への回答を userName として保存
+    // Self-Reference 質問2問（index 0,1）の後、index 2 以降が動的質問（=最初は名前）
+    if (currentContextQ === 2 && !userName) {
       setUserName(answer)
     }
     if (currentContextQ + 1 >= contextQuestions.length) {
