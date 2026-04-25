@@ -12,6 +12,7 @@ import type {
   DeliberationResult,
   VerificationResult,
   SynthesisResult,
+  PreMortemResult,
   HatColor,
   Fact,
   MemoryContext,
@@ -190,6 +191,114 @@ export async function runVerify(
   })
 
   return { hat: 'blue', model: 'openai', ...object }
+}
+
+// ── Stage 3.5: 叡（Ei）— Pre-mortem（v4 Phase 4・時間の座）──────
+// 2026-04-24 v4 追加: 提出前レッドチームの心臓。
+// Claude Opus 4.7 で実行（models.synthesize と同じ枠・最高推論が必要）。
+export async function runPreMortem(
+  sq: StructuredQuestion,
+  facts: Fact[],
+  agents: AgentResponse[],
+  verification: VerificationResult,
+): Promise<PreMortemResult> {
+  const { text } = await generateText({
+    model: models.synthesize,
+    prompt: prompts.premortem(sq, facts, agents, verification),
+  })
+
+  // JSON 抽出（コードフェンス or 生 JSON）
+  const jsonMatch = text.match(/```json\s*([\s\S]*?)```/) ?? text.match(/\{[\s\S]*\}/)
+  // v4 安全装置: モデルが disclaimer を出さなかった場合のデフォルト文言
+  const defaultDisclaimer =
+    'これは未来から語られた仮想シナリオです。登場する数字（金額・月数・週数・割合）は予測ではなく、思考のための仮置き値です。あなたの状況に合わせて調整してください。'
+
+  const fallback: PreMortemResult = {
+    hat: 'blue',
+    model: 'claude',
+    scenarioTitle: '',
+    narrative: text.slice(0, 500),
+    rootCauses: [],
+    warningSigns: [],
+    retractionTriggers: [],
+    coreQuestionBack: '',
+    disclaimer: defaultDisclaimer,
+  }
+
+  if (!jsonMatch) return fallback
+
+  try {
+    const jsonStr = jsonMatch[1] ?? jsonMatch[0]
+    const parsed = JSON.parse(jsonStr) as Partial<PreMortemResult>
+    return {
+      hat: 'blue',
+      model: 'claude',
+      scenarioTitle: typeof parsed.scenarioTitle === 'string' ? parsed.scenarioTitle : '',
+      narrative: typeof parsed.narrative === 'string' ? parsed.narrative : fallback.narrative,
+      rootCauses: Array.isArray(parsed.rootCauses) ? parsed.rootCauses.filter(s => typeof s === 'string') : [],
+      warningSigns: Array.isArray(parsed.warningSigns) ? parsed.warningSigns.filter(s => typeof s === 'string') : [],
+      retractionTriggers: Array.isArray(parsed.retractionTriggers) ? parsed.retractionTriggers.filter(s => typeof s === 'string') : [],
+      coreQuestionBack: typeof parsed.coreQuestionBack === 'string' ? parsed.coreQuestionBack : '',
+      disclaimer: typeof parsed.disclaimer === 'string' && parsed.disclaimer.trim().length > 0
+        ? parsed.disclaimer
+        : defaultDisclaimer,
+    }
+  } catch {
+    return fallback
+  }
+}
+
+// ── Stage 3.5b: Pre-mortem Variant（v4 軽量複数シナリオ拡張）──────
+// 2026-04-25 追加: 既出シナリオを除外し、別角度の失敗を生成。
+export async function runPreMortemVariant(
+  sq: StructuredQuestion,
+  facts: Fact[],
+  agents: AgentResponse[],
+  verification: VerificationResult,
+  avoidScenarios: string[],
+): Promise<PreMortemResult> {
+  const { text } = await generateText({
+    model: models.synthesize,
+    prompt: prompts.premortemVariant(sq, facts, agents, verification, avoidScenarios),
+  })
+
+  const defaultDisclaimer =
+    'これは未来から語られた仮想シナリオです。登場する数字（金額・月数・週数・割合）は予測ではなく、思考のための仮置き値です。あなたの状況に合わせて調整してください。'
+
+  const fallback: PreMortemResult = {
+    hat: 'blue',
+    model: 'claude',
+    scenarioTitle: '',
+    narrative: text.slice(0, 500),
+    rootCauses: [],
+    warningSigns: [],
+    retractionTriggers: [],
+    coreQuestionBack: '',
+    disclaimer: defaultDisclaimer,
+  }
+
+  const jsonMatch = text.match(/```json\s*([\s\S]*?)```/) ?? text.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) return fallback
+
+  try {
+    const jsonStr = jsonMatch[1] ?? jsonMatch[0]
+    const parsed = JSON.parse(jsonStr) as Partial<PreMortemResult>
+    return {
+      hat: 'blue',
+      model: 'claude',
+      scenarioTitle: typeof parsed.scenarioTitle === 'string' ? parsed.scenarioTitle : '',
+      narrative: typeof parsed.narrative === 'string' ? parsed.narrative : fallback.narrative,
+      rootCauses: Array.isArray(parsed.rootCauses) ? parsed.rootCauses.filter(s => typeof s === 'string') : [],
+      warningSigns: Array.isArray(parsed.warningSigns) ? parsed.warningSigns.filter(s => typeof s === 'string') : [],
+      retractionTriggers: Array.isArray(parsed.retractionTriggers) ? parsed.retractionTriggers.filter(s => typeof s === 'string') : [],
+      coreQuestionBack: typeof parsed.coreQuestionBack === 'string' ? parsed.coreQuestionBack : '',
+      disclaimer: typeof parsed.disclaimer === 'string' && parsed.disclaimer.trim().length > 0
+        ? parsed.disclaimer
+        : defaultDisclaimer,
+    }
+  } catch {
+    return fallback
+  }
 }
 
 // ── Stage 4: 叡（Ei）— 統合（Claude）────────────────

@@ -1,6 +1,6 @@
 // Socra パイプライン SSE エンドポイント
 // 5段パイプラインを順次実行し、各ステージの結果をSSEでストリーミング
-import { runStructure, runObserve, runDeliberateSequential, runVerify, runSynthesize, runRouting, runFocusPoint } from '@/lib/pipeline/engine'
+import { runStructure, runObserve, runDeliberateSequential, runVerify, runSynthesize, runRouting, runFocusPoint, runPreMortem } from '@/lib/pipeline/engine'
 import { detectCrisis, getCrisisResponse } from '@/lib/safety'
 import type { SSEEvent, MemoryContext } from '@/types'
 
@@ -155,6 +155,21 @@ export async function POST(req: Request) {
           const verification = await runVerify(structured, deliberation.agents)
           send({ type: 'stage:complete', stage: 'verify', data: verification, timestamp: now() })
 
+          // ── Stage 3.5: 叡 — Pre-mortem（v4 Phase 4・時間の座）────
+          // round 0（初回）のみ実行。フォローアップラウンドでは叡は現在に戻って対話する。
+          let preMortem = null
+          if (round === 0) {
+            send({ type: 'stage:start', stage: 'premortem', data: null, timestamp: now() })
+            try {
+              preMortem = await runPreMortem(structured, observation.facts, deliberation.agents, verification)
+              send({ type: 'stage:complete', stage: 'premortem', data: preMortem, timestamp: now() })
+            } catch (err) {
+              // Pre-mortem 失敗時は pipeline 全体を落とさず、synthesize へ続行
+              const msg = err instanceof Error ? err.message : 'premortem failed'
+              send({ type: 'stage:complete', stage: 'premortem', data: { error: msg }, timestamp: now() })
+            }
+          }
+
           // ── Stage 4: 青/統合 ────────────────────────
           send({ type: 'stage:start', stage: 'synthesize', data: null, timestamp: now() })
           const synthesis = await runSynthesize(structured, observation.facts, deliberation.agents, verification, undefined, userName, round, memoryContext)
@@ -163,7 +178,7 @@ export async function POST(req: Request) {
           // ── 完了 ────────────────────────────────────
           send({
             type: 'pipeline:complete',
-            data: { structured, observation, deliberation, verification, synthesis, routing },
+            data: { structured, observation, deliberation, verification, preMortem, synthesis, routing },
             timestamp: now(),
           })
         }

@@ -28,6 +28,7 @@ export type PipelineStage =
   | 'observe'     // Stage 1: 白/観 — 事実収集
   | 'deliberate'  // Stage 2: 赤・黒・黄・緑 — 並列判断
   | 'verify'      // Stage 3: 論 — 検証
+  | 'premortem'   // Stage 3.5: 叡 — Pre-mortem（時間の座・v4 Phase 4）
   | 'synthesize'  // Stage 4: 青/統合者 — 統合
 
 export type PipelineStatus = 'pending' | 'running' | 'done' | 'error'
@@ -105,6 +106,21 @@ export interface Contradiction {
   hat2: HatColor
   description: string
   severity: 'critical' | 'moderate' | 'minor'
+}
+
+// ── Stage 3.5: Pre-mortem（v4 Phase 4・叡の「時間の座」） ────
+// 2026-04-24 v4 追加: 提出前レッドチームとしての Socra の心臓部。
+// 「3年後、この決定は失敗だった。何がそれを招いたのか。」を叡が語る。
+export interface PreMortemResult {
+  hat: 'blue'
+  model: 'claude'
+  scenarioTitle: string          // 失敗シナリオのタイトル（例: "3年後、拡大は内部崩壊で頓挫した"）
+  narrative: string              // 3年後から振り返る物語（未来完了形）
+  rootCauses: string[]           // 失敗を招いた根本原因（3〜5個）
+  warningSigns: string[]         // 早期警戒サイン（このサインが出たら黄信号・3〜5個）
+  retractionTriggers: string[]   // 撤回条件（これが起きたら引き返す・2〜4個）
+  coreQuestionBack: string       // 現在に戻って叡が問う核心の問い（1文）
+  disclaimer: string             // v4 安全装置: 「これは仮想シナリオ・数字は予測ではなく仮置き」と明記する1〜2文
 }
 
 // ── Stage 4: 統合 ──────────────────────────────────────
@@ -207,6 +223,7 @@ export interface Session {
   observation?: ObservationResult
   deliberation?: DeliberationResult
   verification?: VerificationResult
+  preMortem?: PreMortemResult
   synthesis?: SynthesisResult
   createdAt: string
   completedAt?: string
