@@ -307,9 +307,76 @@ export function usePipeline() {
               }
               break
 
-            case 'pipeline:complete':
-              setState(prev => ({ ...prev, status: 'complete', currentStage: null }))
+            case 'pipeline:complete': {
+              // 2026-04-25: Synthesis 分離後の挙動。
+              // - Quick mode: event.data.synthesis が存在 → 即 complete
+              // - Full mode: synthesis === null → /api/pipeline/synthesize を別 fetch
+              const completeData = event.data as {
+                structured?: StructuredQuestion
+                observation?: ObservationResult
+                deliberation?: { agents?: AgentResponse[] }
+                verification?: VerificationResult
+                preMortem?: PreMortemResult | null
+                synthesis?: SynthesisResult | null
+              }
+
+              if (completeData?.synthesis) {
+                // Quick mode（叡が単独応答）: 既に synthesis がある
+                setState(prev => ({ ...prev, status: 'complete', currentStage: null }))
+                break
+              }
+
+              // Full mode: Synthesis を別エンドポイントで非同期取得
+              setState(prev => ({ ...prev, currentStage: 'synthesize' as PipelineStage }))
+              addTimeline({
+                id: `stage-synthesize-start-${Date.now()}`,
+                type: 'system',
+                stage: 'synthesize',
+                content: STAGE_LABELS['synthesize'],
+                timestamp: new Date().toISOString(),
+              })
+
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/pipeline/synthesize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      structured: completeData.structured,
+                      facts: completeData.observation?.facts ?? [],
+                      agents: completeData.deliberation?.agents ?? [],
+                      verification: completeData.verification,
+                      userName,
+                      round: currentRound,
+                      memoryContext,
+                    }),
+                  })
+                  if (!res.ok) {
+                    const errBody = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+                    throw new Error(typeof errBody.error === 'string' ? errBody.error : 'synthesize failed')
+                  }
+                  const syn = await res.json() as SynthesisResult
+                  setState(prev => ({ ...prev, synthesis: syn, status: 'complete', currentStage: null }))
+                  addTimeline({
+                    id: `ei-synthesis-${Date.now()}`,
+                    type: 'synthesis',
+                    name: 'Ei',
+                    hat: 'blue',
+                    stage: 'synthesize',
+                    content: syn.recommendation,
+                    timestamp: new Date().toISOString(),
+                  })
+                } catch (err) {
+                  setState(prev => ({
+                    ...prev,
+                    status: 'error',
+                    currentStage: null,
+                    error: err instanceof Error ? err.message : 'synthesize fetch failed',
+                  }))
+                }
+              })()
               break
+            }
 
             case 'pipeline:error':
               const errData = event.data as { error: string }
@@ -365,6 +432,21 @@ export function usePipeline() {
       }
       } finally {
         reader.cancel().catch(() => {})
+        // 2026-04-25: SSE が done で終了したのに pipeline:complete / pipeline:error が
+        // 受信されないケース（Vercel maxDuration 強制終了など）への防御。
+        // currentStage === 'synthesize' は分離した synthesize fetch が進行中の正常状態
+        // なので除外する。
+        setState(prev => {
+          if (prev.status === 'running' && prev.currentStage !== 'synthesize') {
+            return {
+              ...prev,
+              status: 'error',
+              currentStage: null,
+              error: 'パイプラインが予期せず終了しました。再試行してください。',
+            }
+          }
+          return prev
+        })
       }
     } catch (err) {
       setState(prev => ({
