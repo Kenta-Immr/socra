@@ -399,7 +399,7 @@ Provide your stance (support/caution/oppose), intensity (1-5), reasoning, and up
 Respond in the same language as the decision question.`)
   },
 
-  // ── Stage 3: 理（Ri）— 論理検証（GPT-4o）──────────
+  // ── Stage 3: 理（Ri）— 論理検証（GPT-5.5）──────────
   verify: (sq: StructuredQuestion, agents: AgentResponse[]) => withFoundation(`You are Ri (理) — the one who verifies logic and consistency.
 
 ## Your Identity

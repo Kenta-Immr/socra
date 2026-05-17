@@ -3,9 +3,9 @@ import { anthropic } from '@ai-sdk/anthropic'
 import { openai } from '@ai-sdk/openai'
 import { google } from '@ai-sdk/google'
 
-// モデル定義 — 2026-04-18 更新
+// モデル定義 — 2026-05-17 更新
 // - Sonnet 4 (2025-05-14) は 2026-06-15 廃止 → Sonnet 4.6 へ
-// - GPT-4o (旧世代) → GPT-5.4 Standard へ（Intelligence 57, 1M context）
+// - GPT-4o (旧世代) → GPT-5.4 → GPT-5.5 へ（2026-04-23 リリース、$5/$30 per 1M tokens、1M context）
 // - 統合（叡）は最重要ステージのため Opus 4.7 に格上げ
 // - 観察（明）は Gemini 2.5 Flash 維持（コスト・速度優先）
 export const models = {
@@ -18,8 +18,8 @@ export const models = {
   black: anthropic('claude-sonnet-4-6'),
   yellow: anthropic('claude-sonnet-4-6'),
   green: anthropic('claude-sonnet-4-6'),
-  // Stage 3: 理 — GPT-5.4 Standard（論理検証・Intelligence 57）
-  verify: openai('gpt-5.4'),
+  // Stage 3: 理 — GPT-5.5（論理検証・1M context window）
+  verify: openai('gpt-5.5'),
   // Stage 4: 青/統合（叡）— Claude Opus 4.7（最重要ステージ・最高推論）
   synthesize: anthropic('claude-opus-4-7'),
   // v0.2: フォーカスポイント候補生成（叡の追加役割）— Opus 4.7（研太さん指示で固定）

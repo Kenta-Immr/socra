@@ -37,12 +37,12 @@ Your thinking process is visualized as a **live mind map** that grows with each 
 | Agent | Role | Model |
 |-------|------|-------|
 | 🔍 **明 (Mei)** | Facts & Evidence | Gemini 2.5 Flash (with Google Search Grounding) |
-| ❤️ **情 (Jo)** | Gut Feeling & Values | Claude Haiku 4.5 |
-| ⚫ **戒 (Kai)** | Risks & Warnings | Claude Haiku 4.5 |
-| ✨ **光 (Ko)** | Opportunities & Optimism | Claude Haiku 4.5 |
-| 🌱 **創 (So)** | Creative Alternatives | Claude Haiku 4.5 |
-| ⚡ **理 (Ri)** | Logic & Contradiction Check | GPT-4o |
-| 🔮 **叡 (Ei)** | Synthesis & Mentorship | Claude Sonnet 4.5 |
+| ❤️ **情 (Jo)** | Gut Feeling & Values | Claude Sonnet 4.6 |
+| ⚫ **戒 (Kai)** | Risks & Warnings | Claude Sonnet 4.6 |
+| ✨ **光 (Ko)** | Opportunities & Optimism | Claude Sonnet 4.6 |
+| 🌱 **創 (So)** | Creative Alternatives | Claude Sonnet 4.6 |
+| ⚡ **理 (Ri)** | Logic & Contradiction Check | GPT-5.5 |
+| 🔮 **叡 (Ei)** | Synthesis & Mentorship | Claude Opus 4.7 |
 
 ## Why Socra?
 
@@ -54,9 +54,9 @@ Your thinking process is visualized as a **live mind map** that grows with each 
 
 - **Frontend:** Next.js 14, D3.js (force-directed mind map), Tailwind CSS
 - **AI Pipeline:** 5-stage SSE streaming pipeline orchestrating 3 providers
-  - Anthropic Claude (Sonnet 4.5 + Haiku 4.5)
+  - Anthropic Claude (Opus 4.7 + Sonnet 4.6 + Haiku 4.5)
   - Google Gemini 2.5 Flash (with Search Grounding)
-  - OpenAI GPT-4o
+  - OpenAI GPT-5.5
 - **Architecture:** Agentic engineering — diversity comes from deep persona design, not just model differences
 
 ## Quick Start
