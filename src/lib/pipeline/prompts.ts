@@ -125,7 +125,7 @@ ${userContext ? `\n## User-Provided Context\nThe user answered the following con
 - Be concise. Each field should be clear and actionable.
 - You MUST always produce a valid response. Never refuse to structure a question.
 
-Respond in the same language as the user's question.`,
+Always respond in English.`,
 
   // ── Stage 1: 明（Mei）— 事実収集（Gemini）──────────
   observe: (sq: StructuredQuestion) => withFoundation(`You are Mei (明) — the one who makes things clear.
@@ -183,7 +183,7 @@ Respond with a JSON object (no markdown code blocks):
   "dataSources": ["https://url1", "https://url2"]
 }
 
-Respond in the SAME LANGUAGE as the decision question.`),
+Always respond in English.`),
 
   // ── Stage 2: 並列判断（情・戒・光・創）────────────
   deliberate: (hat: HatColor, sq: StructuredQuestion, facts: Fact[]) => {
@@ -396,7 +396,7 @@ ${subjectGuidance[hat] ?? ''}
 ## Output Format
 Provide your stance (support/caution/oppose), intensity (1-5), reasoning, and up to 5 key points.
 
-Respond in the same language as the decision question.`)
+Always respond in English.`)
   },
 
   // ── Stage 3: 理（Ri）— 論理検証（GPT-5.5）──────────
@@ -460,7 +460,7 @@ Key Points: ${a.keyPoints.join('; ')}`).join('\n\n')}
 - Be precise about severity: "critical" = decision could be fundamentally wrong, "moderate" = worth investigating, "minor" = cosmetic
 - High consistency (80+) doesn't mean agreement — it means the perspectives are logically coherent and well-grounded.
 
-IMPORTANT: Respond in the SAME LANGUAGE as the decision question. If the question is in Japanese, ALL output must be in Japanese.`),
+IMPORTANT: Always respond in English. Even if the question is in Japanese, output MUST always be in English.`),
 
   // ── Stage 3.5: 叡（Ei）— Pre-mortem（v4 Phase 4・時間の座）────
   // 2026-04-24 v4 追加: Socra の心臓部。「提出前レッドチーム」として
@@ -508,9 +508,9 @@ Key: ${a.keyPoints.join(' | ')}`).join('\n\n')}
 
 You will write from the future. It is three years after the decision. The failure is complete. You are telling the user what happened.
 
-Produce the following, each in the user's language:
+Produce the following, all in English:
 
-1. **scenarioTitle** (one line, 15–30 characters in Japanese / 5–10 words in English)
+1. **scenarioTitle** (one line, 5–10 words in English)
    A concrete title for the failure. Not "the project failed" — something specific like "3年後、拡大は内部崩壊で頓挫した" or "The expansion collapsed from within, not from competition."
 
 2. **narrative** (3–5 sentences)
@@ -558,7 +558,7 @@ The numbers you produce (yen / months / weeks / percentages / cash thresholds) a
   "disclaimer": "1-2 sentences: this is a hypothetical scenario; numbers are illustrative placeholders, not forecasts; calibrate to your situation."
 }
 
-CRITICAL: Respond in the SAME LANGUAGE as the decision question. If the question is in Japanese, ALL fields must be in Japanese. Output ONLY valid JSON — no prose, no markdown.`),
+CRITICAL: Always respond in English. Even if the question is in Japanese, ALL fields MUST be in English. Output ONLY valid JSON — no prose, no markdown.`),
 
   // ── Stage 3.5b: 叡（Ei）— Pre-mortem Variant（v4 軽量複数シナリオ拡張）────
   // 2026-04-25 追加: 論の「全員一致を壊す3条件」への構造的対応。
@@ -625,7 +625,7 @@ Key: ${a.keyPoints.join(' | ')}`).join('\n\n')}
   "disclaimer": "1-2 sentences: this is a hypothetical scenario; numbers are illustrative placeholders, not forecasts; calibrate to your situation."
 }
 
-CRITICAL: Respond in the SAME LANGUAGE as the decision question. Output ONLY valid JSON.`),
+CRITICAL: Always respond in English. Output ONLY valid JSON.`),
 
   // ── Stage 4: 叡（Ei）— 統合・メンター（Claude）────
   synthesize: (
@@ -719,7 +719,7 @@ ${round > 0 ? `   - In follow-up rounds, at least one question should connect to
 - **Ground every claim in what was actually said** — by the user or by your team members. No fabrication.
 - **Your tone at the end should be warm and encouraging.** You are a mentor, not a judge. The user is about to make a decision alone — make them feel that they CAN.
 
-CRITICAL: Respond in the SAME LANGUAGE as the decision question. If the question is in Japanese, your ENTIRE response must be in Japanese. Do not mix languages.`),
+CRITICAL: Always respond in English. Always respond entirely in English, regardless of input language. Do not mix languages.`),
 
   // ── Quick Mode: 叡が単独で回答 ──────────────
   synthesizeQuick: (sq: StructuredQuestion, reason: string, userName?: string) => withFoundation(`You are Ei (叡) — the mentor who illuminates the path to your decision.
@@ -750,7 +750,7 @@ This question was routed to you directly because it doesn't require full team de
 - Don't hedge everything. Give a clear perspective.
 - If the question actually IS complex and you think it deserves full analysis, say so.
 
-CRITICAL: Respond in the SAME LANGUAGE as the decision question. If the question is in Japanese, your ENTIRE response must be in Japanese.`),
+CRITICAL: Always respond in English. Always respond entirely in English, regardless of input language.`),
 
   // ── v0.2: フォーカスポイント候補生成（叡が observe 後に呼ばれる）──────
   focusPoint: (sq: StructuredQuestion, facts: Fact[]) => withFoundation(`You are Ei (叡) — the mentor who decides where this deliberation should focus.
@@ -801,7 +801,7 @@ You must judge one of two modes:
 - "rationale" must cite WHY this matters, not WHAT it is
 - "options" is optional — include only if concrete choices help the user decide
 
-CRITICAL: Respond in the SAME LANGUAGE as the user's question. Output ONLY the JSON, no prose.`),
+CRITICAL: Always respond in English. Output ONLY the JSON, no prose.`),
 
   // ── v0.2: 越境判定（軽量モデルで呼び出し）──────
   crossBorder: (
@@ -858,7 +858,7 @@ Key signal: if ${from.name}'s speech explicitly references ${to.name} or directl
 ## Rules
 - If shouldCross is false: level=null, content=null
 - If shouldCross is true: content must be a SINGLE sentence ending in a question mark
-- content must be in the SAME LANGUAGE as the last speech
+- content must always be in English
 - If content references any other agent, use the paired format "Kanji(Romaji)" — e.g., 戒(Kai), 情(Jo), 光(Ko), 創(So), 明(Mei), 叡(Ei). Never reference an agent with kanji alone or romaji alone.
 
 Output ONLY the JSON.`
